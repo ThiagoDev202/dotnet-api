@@ -1,0 +1,64 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{CFDFBCD9-6EED-4F69-80B7-3C4A9D60D72A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrderService.Domain", "src\OrderService.Domain\OrderService.Domain.csproj", "{246799E7-E614-4303-865A-759C143C73E6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrderService.Application", "src\OrderService.Application\OrderService.Application.csproj", "{F070553D-7514-4FE4-95E3-6C5A98BA3652}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrderService.Infrastructure", "src\OrderService.Infrastructure\OrderService.Infrastructure.csproj", "{DFA066FE-770F-4643-A01D-DA8C4781E274}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrderService.Api", "src\OrderService.Api\OrderService.Api.csproj", "{87268629-D8E4-4C12-802B-A4311B04217B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{BED3B165-5F00-49E7-AA13-543D7B2D1EE3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrderService.UnitTests", "tests\OrderService.UnitTests\OrderService.UnitTests.csproj", "{35CC0184-D22E-4EC6-8B80-20F7AC6603AB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrderService.IntegrationTests", "tests\OrderService.IntegrationTests\OrderService.IntegrationTests.csproj", "{3B57A43A-C2BD-40BA-A0A5-8ABE2C61EA56}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{246799E7-E614-4303-865A-759C143C73E6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{246799E7-E614-4303-865A-759C143C73E6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{246799E7-E614-4303-865A-759C143C73E6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{246799E7-E614-4303-865A-759C143C73E6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F070553D-7514-4FE4-95E3-6C5A98BA3652}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F070553D-7514-4FE4-95E3-6C5A98BA3652}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F070553D-7514-4FE4-95E3-6C5A98BA3652}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F070553D-7514-4FE4-95E3-6C5A98BA3652}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DFA066FE-770F-4643-A01D-DA8C4781E274}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DFA066FE-770F-4643-A01D-DA8C4781E274}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DFA066FE-770F-4643-A01D-DA8C4781E274}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DFA066FE-770F-4643-A01D-DA8C4781E274}.Release|Any CPU.Build.0 = Release|Any CPU
+		{87268629-D8E4-4C12-802B-A4311B04217B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{87268629-D8E4-4C12-802B-A4311B04217B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{87268629-D8E4-4C12-802B-A4311B04217B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{87268629-D8E4-4C12-802B-A4311B04217B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{35CC0184-D22E-4EC6-8B80-20F7AC6603AB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{35CC0184-D22E-4EC6-8B80-20F7AC6603AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{35CC0184-D22E-4EC6-8B80-20F7AC6603AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{35CC0184-D22E-4EC6-8B80-20F7AC6603AB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3B57A43A-C2BD-40BA-A0A5-8ABE2C61EA56}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3B57A43A-C2BD-40BA-A0A5-8ABE2C61EA56}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3B57A43A-C2BD-40BA-A0A5-8ABE2C61EA56}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3B57A43A-C2BD-40BA-A0A5-8ABE2C61EA56}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{246799E7-E614-4303-865A-759C143C73E6} = {CFDFBCD9-6EED-4F69-80B7-3C4A9D60D72A}
+		{F070553D-7514-4FE4-95E3-6C5A98BA3652} = {CFDFBCD9-6EED-4F69-80B7-3C4A9D60D72A}
+		{DFA066FE-770F-4643-A01D-DA8C4781E274} = {CFDFBCD9-6EED-4F69-80B7-3C4A9D60D72A}
+		{87268629-D8E4-4C12-802B-A4311B04217B} = {CFDFBCD9-6EED-4F69-80B7-3C4A9D60D72A}
+		{35CC0184-D22E-4EC6-8B80-20F7AC6603AB} = {BED3B165-5F00-49E7-AA13-543D7B2D1EE3}
+		{3B57A43A-C2BD-40BA-A0A5-8ABE2C61EA56} = {BED3B165-5F00-49E7-AA13-543D7B2D1EE3}
+	EndGlobalSection
+EndGlobal
