@@ -1,46 +1,28 @@
-# Migration 0002 — RefreshAndRevocationTokens
+# 0002 — RefreshAndRevocationTokens
 
-**Arquivo EF:** `20260605203137_RefreshAndRevocationTokens.cs`
-**Data:** 2026-06-05
-**Autor:** ThiagoDev202
+`20260605203137_RefreshAndRevocationTokens.cs`
 
-## Objetivo
+## Schema
 
-Suportar refresh tokens com rotação (ADR-0005) e revogação de access tokens por logout (blacklist de JTIs).
+**`refresh_tokens`** — credenciais de sessão de longa duração. Nunca armazena o valor bruto: `token_hash` é SHA-256 hex do token gerado. `replaced_by` guarda o hash do token que substituiu (rastro da cadeia de rotação). `revoked_at` NULL = ativo.
 
-## Tabelas criadas
+**`revoked_tokens`** — blacklist de JTIs de access tokens revogados por logout. `jti` é PK (claim do JWT). Registros podem ser apagados após `expires_at` sem perda de segurança — token expirado já seria rejeitado pela validação JWT antes de chegar ao middleware.
 
-### `refresh_tokens`
+Índices em `expires_at` nas duas tabelas para facilitar o cleanup periódico.
 
-Armazena as credenciais de sessão de longa duração. O valor bruto do token **nunca** é armazenado — apenas o hash SHA-256.
+## Trade-offs
 
-| Coluna | Tipo | Descrição |
-|---|---|---|
-| `id` | `uuid` PK | Identificador interno |
-| `customer_id` | `uuid` NOT NULL | Dono do token |
-| `token_hash` | `text(128)` NOT NULL UNIQUE | SHA-256 do token bruto (hex lowercase) |
-| `expires_at` | `timestamptz` NOT NULL | Quando expira |
-| `revoked_at` | `timestamptz` NULL | NULL = ativo; preenchido ao revogar |
-| `replaced_by` | `text(128)` NULL | Hash do token que substituiu (rotação) |
-| `created_at` | `timestamptz` NOT NULL | Emissão |
+**Postgres em vez de Redis para a blacklist.** Elimina nova dependência de infra. Custo: +1 query por request autenticada (`SELECT` por `jti` com índice PK). Para este serviço é aceitável. Se a latência aparecer em profiling, a interface `ITokenRevocationService` já isola a implementação — trocar por Redis é uma mudança só na Infrastructure.
 
-**Índices:** `ix_refresh_tokens_customer` (customer_id), `ix_refresh_tokens_expires` (expires_at), UNIQUE em `token_hash`.
+**SHA-256 no hash do refresh token.** Não é bcrypt — refresh token tem 64 bytes de entropia (`RandomNumberGenerator`), o que torna brute-force computacionalmente inviável mesmo com hash rápido. bcrypt adicionaria latência desnecessária sem ganho real de segurança neste caso.
 
-### `revoked_tokens`
+**`RevokedToken` como model de Infrastructure, não entity de Domain.** É um concern técnico de revogação, não regra de negócio. Não faz sentido o Domain conhecer blacklist de JTIs.
 
-Blacklist de JTIs de access tokens revogados por logout. Registro removível após `expires_at`.
+## Limpeza periódica (produção)
 
-| Coluna | Tipo | Descrição |
-|---|---|---|
-| `jti` | `text(128)` PK | Claim `jti` do JWT revogado |
-| `expires_at` | `timestamptz` NOT NULL | Quando o JWT original expiraria |
-| `revoked_at` | `timestamptz` NOT NULL | Quando foi revogado |
+```sql
+DELETE FROM revoked_tokens WHERE expires_at < now();
+DELETE FROM refresh_tokens WHERE expires_at < now() AND revoked_at IS NOT NULL;
+```
 
-**Índices:** `ix_revoked_tokens_expires` (expires_at) — permite cleanup de registros expirados com `DELETE WHERE expires_at < now()`.
-
-## Notas operacionais
-
-- **Cleanup:** Agendar `DELETE FROM revoked_tokens WHERE expires_at < now()` periodicamente (ex.: diário).
-- **Cleanup refresh_tokens:** `DELETE FROM refresh_tokens WHERE expires_at < now() AND revoked_at IS NOT NULL`.
-- **Migração automática:** aplicada no startup da API via `database.MigrateAsync()` (Fase 6).
-- **Rollback:** `Down()` remove as duas tabelas — sem impacto em `orders`, `order_items`, `products`.
+Sem limpeza, as tabelas crescem indefinidamente. Agendar diariamente via cron ou job interno.

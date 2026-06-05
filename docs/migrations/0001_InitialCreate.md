@@ -1,43 +1,25 @@
 # 0001 — InitialCreate
 
-**Arquivo:** `20260605160035_InitialCreate.cs`
-**Fase:** 3 — Infrastructure
+`20260605160035_InitialCreate.cs`
 
-## Tabelas criadas
+## Schema
 
-| Tabela | Descrição |
-|--------|-----------|
-| `orders` | Pedidos; `xmin` como token de concorrência otimista (sistema Postgres) |
-| `order_items` | Itens do pedido; FK `order_id` → `orders.id` (CASCADE DELETE) |
-| `products` | Catálogo/estoque; `CHECK (available_quantity >= 0)` impede estoque negativo no schema |
+**`orders`** — `xmin` como token de concorrência otimista (coluna de sistema do Postgres, sem coluna extra). EF mapeia como `rowVersion`.
 
-## Índices
+**`order_items`** — FK `order_id → orders.id` CASCADE DELETE. Shadow property gerenciada pelo EF; o agregado expõe `IReadOnlyCollection<OrderItem>`.
 
-| Índice | Tabela | Coluna | Finalidade |
-|--------|--------|--------|------------|
-| `ix_orders_customer_id` | `orders` | `customer_id` | Filtro `GET /orders?customerId=` |
-| `ix_orders_status` | `orders` | `status` | Filtro `GET /orders?status=` |
-| `ix_orders_created_at` | `orders` | `created_at` | Filtro `from`/`to` e ordenação |
-| `ix_order_items_order_id` | `order_items` | `order_id` | JOIN/Include automático pelo EF |
+**`products`** — `CHECK (available_quantity >= 0)` como última barreira contra estoque negativo. O decremento atômico no UPDATE deveria impedir antes, mas o CHECK garante consistência mesmo em acesso direto ao banco.
+
+Índices em `orders`: `customer_id`, `status`, `created_at` — cobrem os três filtros do `GET /orders`.
 
 ## Segurança
 
-### Role `orders_app`
-- Criado com `IF NOT EXISTS` (idempotente).
-- Permissões: `SELECT`, `INSERT`, `UPDATE`, `DELETE` em `orders`, `order_items`, `products`.
-- Sem privilégios de DDL — não pode alterar schema.
+Role `orders_app` criada com `IF NOT EXISTS` (idempotente). Tem `SELECT/INSERT/UPDATE/DELETE` nas três tabelas, sem DDL — não consegue alterar schema.
 
-### RLS — Row-Level Security
+RLS em `orders` e `order_items` com `FORCE ROW LEVEL SECURITY` (força mesmo para o owner da tabela). Política: `customer_id = current_setting('app.current_customer_id')::uuid OR current_setting('app.is_admin') = 'true'`. Variáveis definidas via `SET LOCAL` dentro de cada transação pelo `RlsInterceptor` — escopo transacional, sem vazamento no pool.
 
-**`orders`:**
-- `ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY`
-- Policy `customer_isolation`: `customer_id = current_setting('app.current_customer_id')` OR `is_admin = 'true'`
+## Trade-offs
 
-**`order_items`:**
-- Mesma configuração; policy derivada dos pedidos do cliente via subquery em `orders`.
-
-**Variáveis de sessão (SET LOCAL):** definidas pelo `RlsInterceptor` ao iniciar cada transação a partir dos claims JWT. `SET LOCAL` tem escopo de transação — elimina risco de vazamento no pool de conexões.
-
-## Rollback (`Down`)
-
-Remove as policies de RLS e desabilita `ROW LEVEL SECURITY` antes de dropar as tabelas.
+- `xmin` não aparece no `SELECT *` — EF precisa de `HasColumnType("xid").IsRowVersion()`. Vantagem: zero coluna extra, Postgres gerencia automaticamente. Desvantagem: não portável para outros bancos.
+- `FORCE RLS` significa que até queries de migrations/seeds precisam do contexto de sessão correto ou rodar com role diferente (sem RLS). Por isso a `DesignTimeDbContextFactory` usa uma string de conexão separada.
+- `Total` do pedido é derivado (`SUM`) — ignorado no mapeamento EF, calculado em memória ao materializar o agregado.
