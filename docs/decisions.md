@@ -1,144 +1,80 @@
-# Decisões Técnicas (ADRs)
+# Decisões Técnicas
 
-Registro das decisões de arquitetura e stack do Order Service. Cada decisão segue: contexto, decisão, consequências.
+Registro das decisões de arquitetura relevantes do Order Service. Foco em **por quê** — o código já documenta o **o quê**.
 
 ---
 
-## ADR-0001 — Stack e arquitetura base
+## ADR-001 — Stack
 
-**Data:** 2026-06-05
-**Status:** Aceita
+Uma biblioteca por finalidade. Qualquer adição nova exige justificativa explícita.
 
-### Contexto
-
-Teste técnico .NET Sênior: API REST de Pedidos pronta para produção no essencial. A spec exige .NET 8+, EF Core + migrations, PostgreSQL, separação Domain/Application/Infrastructure/API, JWT, testes e `docker compose up`. Várias escolhas eram abertas ("xUnit ou NUnit", "Web API ou Minimal API"). Princípio do projeto: **uma única biblioteca por finalidade**.
-
-### Decisão
-
-| Finalidade | Escolha | Justificativa |
+| Finalidade | Escolha | Por quê não a alternativa |
 |---|---|---|
-| Runtime / Linguagem | .NET 8 (LTS) / C# 12 | Exigência da spec; LTS |
-| API | ASP.NET Core Web API (Controllers) | Organização por recurso, atributos de rota/auth, testabilidade |
-| ORM | EF Core 8 + Npgsql + migrations | Exigência da spec |
-| Banco | PostgreSQL | Exigência da spec |
+| Runtime | .NET 8 / C# 12 | LTS; exigência da spec |
+| API | Web API (Controllers) | Atributos de rota/auth, testabilidade com WebApplicationFactory |
+| ORM | EF Core 8 + Npgsql | Exigência da spec; migrações gerenciadas |
 | Auth | JWT Bearer | Exigência da spec |
-| Validação de request | FluentValidation | Declarativa e testável; domínio mantém invariantes (Guards) |
-| Mapeamento DTO↔domínio | Manual | Auditável; evita mapeamento implícito difícil de debugar |
-| Casos de uso | Application Services explícitos (sem MediatR) | Menos indireção; dependências explícitas |
-| Testes | xUnit | Padrão dominante no ecossistema .NET |
-| Mocking | Moq | Maduro e amplamente conhecido |
-| Asserções | FluentAssertions | Legibilidade e mensagens de falha claras |
-| Integração (DB real) | Testcontainers for PostgreSQL | Testa contra Postgres real, descartável |
-| Logging | Microsoft.Extensions.Logging | Nativo; evita dependência extra |
-| Docs de API | Swashbuckle (Swagger) | Melhora a experiência de avaliar/rodar |
-| Execução | Docker local | Sem SDK no host; reprodutível |
-
-### Consequências
-
-- Nenhuma duplicidade de ferramenta por finalidade.
-- Build/testes rodam via imagem `mcr.microsoft.com/dotnet/sdk:8.0`; runtime via `docker compose`.
+| Validação de request | FluentValidation | Declarativa, testável isoladamente; Guards ficam no domínio |
+| Mapeamento | Manual | Auditável; sem mapeamento implícito que esconde bugs |
+| Casos de uso | Application Services | Sem MediatR — dependências explícitas, menos indireção |
+| Testes | xUnit + Moq + FluentAssertions | Padrão .NET; sem mistura de frameworks |
+| Integração | Testcontainers | Postgres real e descartável; sem mock de banco |
+| Logging | ILogger nativo | Sem dependência extra |
+| Docs | Swashbuckle | Padrão; zero config adicional |
+| Execução | Docker local | Sem SDK no host; reprodutível em qualquer máquina |
 
 ---
 
-## ADR-0002 — Ciclo de vida do pedido e baixa de estoque
+## ADR-002 — Ciclo de vida do pedido
 
-**Data:** 2026-06-05
-**Status:** Aceita
+Pedido **nasce `Placed`** — sem estado `Draft` intermediário. Estoque é baixado no `Confirm`, devolvido no `Cancel`. Ambos idempotentes.
 
-### Contexto
-
-O pedido pode nascer `Placed` ou `Draft→Placed`; a baixa de estoque pode ocorrer na criação ou na confirmação. É preciso evitar overselling sob concorrência.
-
-### Decisão
-
-- Pedido **nasce `Placed`** (valida existência de produto e disponibilidade, mas não reserva).
-- **Confirm** baixa o estoque; **Cancel** devolve. Ambos **idempotentes** (2ª chamada = mesmo resultado).
-
-### Consequências
-
-- Fluxo simples e aderente aos MUST; menos estados intermediários.
+Alternativa descartada: `Draft → Placed` com reserva na criação. Adiciona estado extra e exige compensação em caso de abandono.
 
 ---
 
-## ADR-0003 — Concorrência e garantia de estoque não-negativo
+## ADR-003 — Estoque nunca negativo sob concorrência
 
-**Data:** 2026-06-05
-**Status:** Aceita
+Três camadas de proteção:
 
-### Contexto
+1. **Decremento atômico:** `UPDATE products SET available_quantity = available_quantity - @qty WHERE id = @id AND available_quantity >= @qty` — 0 linhas afetadas = estoque insuficiente, sem lock.
+2. **CHECK de schema:** `CHECK (available_quantity >= 0)` — última barreira, nunca deve disparar se o UPDATE estiver correto.
+3. **Teste de race condition obrigatório:** estoque `N`, `M > N` goroutines concorrentes → exatamente `N` sucessos, `available_quantity` final `== 0`.
 
-Confirmações concorrentes do mesmo produto não podem vender estoque inexistente. A spec valoriza performance — evitar locks longos.
-
-### Decisão
-
-- **Decremento atômico condicional:** `UPDATE stock SET available_quantity = available_quantity - @qty WHERE product_id = @id AND available_quantity >= @qty`. 0 linhas afetadas = estoque insuficiente → erro de negócio.
-- **`CHECK (available_quantity >= 0)`** no schema como garantia final.
-- **Concorrência otimista** no agregado `Order` via token `xmin` → `DbUpdateConcurrencyException` traduzida.
-- **Teste de race condition obrigatório** (estoque N, M>N confirmações concorrentes → N sucessos, final == 0, nunca < 0).
-
-### Consequências
-
-- Sem overselling, sem locks pessimistas de longa duração; comprovado por teste automatizado.
+`xmin` no agregado `Order` para concorrência otimista em edições do pedido (`DbUpdateConcurrencyException` → HTTP 409).
 
 ---
 
-## ADR-0004 — Segurança no banco com RLS (Row-Level Security)
+## ADR-004 — RLS no banco
 
-**Data:** 2026-06-05
-**Status:** Aceita
+Defesa em profundidade além do JWT. Mesmo com bug de autorização na aplicação, o banco isola os dados por cliente.
 
-### Contexto
+Implementação: `ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY` nas tabelas de pedidos. Política: `customer_id = current_setting('app.current_customer_id')::uuid OR current_setting('app.is_admin') = 'true'`.
 
-Além do JWT na aplicação, deseja-se defesa em profundidade no nível do banco para isolar pedidos por cliente.
-
-### Decisão
-
-- **RLS por cliente + bypass admin.** `ENABLE`/`FORCE ROW LEVEL SECURITY` nas tabelas de pedidos; política `customer_id = current_setting('app.current_customer_id')::uuid OR current_setting('app.is_admin') = 'true'`.
-- Por requisição, `SET LOCAL app.current_customer_id`/`app.is_admin` a partir dos claims JWT (escopo transacional, sem vazar no pool).
-- Aplicação conecta como role **sem owner** (`orders_app`); migrations rodam como role dono separado.
-
-### Consequências
-
-- Mesmo com bug de autorização na aplicação, o banco impede acesso cruzado entre clientes. Exige cuidado com a role de conexão e gestão da variável de sessão.
+Por request: `SET LOCAL app.current_customer_id / app.is_admin` dentro da transação (escopo transacional — sem vazamento no pool de conexões). A aplicação conecta com role `orders_app` sem permissão de owner.
 
 ---
 
-## ADR-0005 — Refresh Token com HttpOnly cookie + blacklist Postgres
+## ADR-005 — Refresh token + revogação
 
-**Data:** 2026-06-05
-**Status:** Aceita
+Problema: access token de 60 min tem janela de abuso inaceitável para produção.
 
-### Contexto
+**Solução sem nova infra** (Postgres já existe):
 
-A spec exige JWT mas não define o fluxo de sessão. Com access token de vida longa (original: 60 min), qualquer vazamento tem janela de abuso extensa. O objetivo é atingir produção segura com o menor risco possível de adição de infraestrutura.
-
-### Decisão
-
-| Aspecto | Escolha | Alternativa descartada |
+| | Decisão | Descartado |
 |---|---|---|
-| Access token | **15 minutos** | 60 min (janela de exposição grande) |
-| Refresh token | **7 dias com rotação** | 30 dias (longa duração sem benefício claro) |
-| Transporte refresh | **Cookie HttpOnly + Secure + SameSite=Strict** | Body da resposta / localStorage |
-| Blacklist JTIs | **Tabela `revoked_tokens` no Postgres** | Redis (nova infra) |
-| Detecção de replay | **Revogar família toda se token usado é reapresentado** | Ignorar (sem proteção) |
+| Access token | 15 min + claim `jti` | 60 min |
+| Refresh token | 7 dias, rotação a cada uso | 30 dias sem rotação |
+| Transporte | Cookie `HttpOnly + Secure + SameSite=Strict` | Body / localStorage (XSS rouba) |
+| Blacklist | Tabela `revoked_tokens` no Postgres | Redis (nova dependência) |
+| Replay | Token já usado → revoga família inteira | Ignorar |
 
-**Refresh token em cookie HttpOnly** → JavaScript não lê (XSS protegido); SameSite=Strict bloqueia CSRF; Secure garante HTTPS em produção.
+**Cookie HttpOnly:** JS não consegue ler → XSS rouba o access token (15 min de janela) mas não consegue renovar a sessão. SameSite=Strict bloqueia CSRF.
 
-**Blacklist via Postgres:** cada request autenticada faz 1 query extra em `revoked_tokens` (índice em `jti`). Aceito para este serviço. Quando migrar para Redis: quando a latência de `IsRevokedAsync` aparecer em profiling com ≥ N req/s.
+**Blacklist Postgres:** +1 query por request autenticada (`SELECT` em `revoked_tokens` com índice em `jti`). Custo aceito. Migrar para Redis quando a latência aparecer em profiling.
 
-**Rotação obrigatória:** cada `/auth/refresh` invalida o token anterior e emite novo. Reapresentação de token já consumido → sessão inteira revogada (detecção de roubo).
-
-### Novos endpoints
-
-| Método | Rota | Descrição |
-|---|---|---|
-| `POST` | `/auth/token` | (modificado) emite access + refresh token via cookie |
-| `POST` | `/auth/refresh` | Rotaciona refresh token, retorna novo access token |
-| `POST` | `/auth/logout` | Revoga jti (blacklist) + refresh token; apaga cookie |
-
-### Consequências
-
-- Access token comprometido tem janela de 15 min.
-- Logout é imediato (jti na blacklist, cookie apagado).
-- +1 query por request autenticada (`IsRevokedAsync`); mitigável com cache local ou Redis se necessário.
-- `refresh_tokens` e `revoked_tokens` acumulam dados; adicionar cleanup periódico de registros expirados em produção.
+**Limpeza periódica necessária em produção:**
+```sql
+DELETE FROM revoked_tokens  WHERE expires_at < now();
+DELETE FROM refresh_tokens  WHERE expires_at < now() AND revoked_at IS NOT NULL;
+```
