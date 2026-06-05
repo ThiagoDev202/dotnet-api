@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using OrderService.Application.Repositories;
 using OrderService.Application.Security;
 using OrderService.Domain.Repositories;
+using OrderService.Infrastructure.BackgroundServices;
 using OrderService.Infrastructure.Persistence;
 using OrderService.Infrastructure.Repositories;
 using OrderService.Infrastructure.Security;
@@ -38,6 +39,7 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<ITokenRevocationService, TokenRevocationService>();
+        services.AddHostedService<ExpiredTokenCleanupService>();
 
         return services;
     }

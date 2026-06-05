@@ -6,8 +6,6 @@ Registro das decisões de arquitetura relevantes do Order Service. Foco em **por
 
 ## ADR-001 — Stack
 
-Uma biblioteca por finalidade. Qualquer adição nova exige justificativa explícita.
-
 | Finalidade | Escolha | Por quê não a alternativa |
 |---|---|---|
 | Runtime | .NET 8 / C# 12 | LTS; exigência da spec |
@@ -57,24 +55,18 @@ Por request: `SET LOCAL app.current_customer_id / app.is_admin` dentro da transa
 
 ## ADR-005 — Refresh token + revogação
 
-Problema: access token de 60 min tem janela de abuso inaceitável para produção.
+**Solução sem nova infra** (Postgres já existe. Ideia seria usar Redis, mas preferi usar apenas o postgreSQL por se tratar de um projeto "testing".):
 
-**Solução sem nova infra** (Postgres já existe):
-
-| | Decisão | Descartado |
-|---|---|---|
-| Access token | 15 min + claim `jti` | 60 min |
-| Refresh token | 7 dias, rotação a cada uso | 30 dias sem rotação |
-| Transporte | Cookie `HttpOnly + Secure + SameSite=Strict` | Body / localStorage (XSS rouba) |
-| Blacklist | Tabela `revoked_tokens` no Postgres | Redis (nova dependência) |
-| Replay | Token já usado → revoga família inteira | Ignorar |
+| | Decisão |
+|---|---|
+| Access token | 15 min + claim `jti` |
+| Refresh token | 7 dias, rotação a cada uso |
+| Transporte | Cookie `HttpOnly + Secure + SameSite=Strict` |
+| Blacklist | Tabela `revoked_tokens` no Postgres |
+| Replay | Token já usado → revoga família inteira |
 
 **Cookie HttpOnly:** JS não consegue ler → XSS rouba o access token (15 min de janela) mas não consegue renovar a sessão. SameSite=Strict bloqueia CSRF.
 
 **Blacklist Postgres:** +1 query por request autenticada (`SELECT` em `revoked_tokens` com índice em `jti`). Custo aceito. Migrar para Redis quando a latência aparecer em profiling.
 
-**Limpeza periódica necessária em produção:**
-```sql
-DELETE FROM revoked_tokens  WHERE expires_at < now();
-DELETE FROM refresh_tokens  WHERE expires_at < now() AND revoked_at IS NOT NULL;
-```
+**Limpeza automática:** `ExpiredTokenCleanupService` (`BackgroundService`) roda a cada hora e apaga registros expirados das duas tabelas. Não requer agendamento externo.
