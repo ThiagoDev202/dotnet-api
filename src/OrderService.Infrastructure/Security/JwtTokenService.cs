@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
@@ -20,13 +21,17 @@ public sealed class JwtTokenService : IJwtTokenService
         _key = section["Key"]!;
         _issuer = section["Issuer"]!;
         _audience = section["Audience"]!;
-        _expirationMinutes = section.GetValue("ExpirationMinutes", 60);
+        _expirationMinutes = section.GetValue("ExpirationMinutes", 15);
     }
 
-    public string GenerateToken(Guid customerId, string role)
+    public (string Token, string Jti, DateTime ExpiresAt) GenerateAccessToken(Guid customerId, string role)
     {
+        var jti = Guid.NewGuid().ToString();
+        var expiresAt = DateTime.UtcNow.AddMinutes(_expirationMinutes);
+
         var claims = new[]
         {
+            new Claim(JwtRegisteredClaimNames.Jti, jti),
             new Claim("customerId", customerId.ToString()),
             new Claim("role", role)
         };
@@ -38,9 +43,15 @@ public sealed class JwtTokenService : IJwtTokenService
             issuer: _issuer,
             audience: _audience,
             claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(_expirationMinutes),
+            expires: expiresAt,
             signingCredentials: credentials);
 
-        return new JwtSecurityTokenHandler().WriteToken(token);
+        return (new JwtSecurityTokenHandler().WriteToken(token), jti, expiresAt);
+    }
+
+    public string GenerateRefreshTokenValue()
+    {
+        var bytes = RandomNumberGenerator.GetBytes(64);
+        return Convert.ToBase64String(bytes);
     }
 }

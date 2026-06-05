@@ -100,3 +100,45 @@ Além do JWT na aplicação, deseja-se defesa em profundidade no nível do banco
 ### Consequências
 
 - Mesmo com bug de autorização na aplicação, o banco impede acesso cruzado entre clientes. Exige cuidado com a role de conexão e gestão da variável de sessão.
+
+---
+
+## ADR-0005 — Refresh Token com HttpOnly cookie + blacklist Postgres
+
+**Data:** 2026-06-05
+**Status:** Aceita
+
+### Contexto
+
+A spec exige JWT mas não define o fluxo de sessão. Com access token de vida longa (original: 60 min), qualquer vazamento tem janela de abuso extensa. O objetivo é atingir produção segura com o menor risco possível de adição de infraestrutura.
+
+### Decisão
+
+| Aspecto | Escolha | Alternativa descartada |
+|---|---|---|
+| Access token | **15 minutos** | 60 min (janela de exposição grande) |
+| Refresh token | **7 dias com rotação** | 30 dias (longa duração sem benefício claro) |
+| Transporte refresh | **Cookie HttpOnly + Secure + SameSite=Strict** | Body da resposta / localStorage |
+| Blacklist JTIs | **Tabela `revoked_tokens` no Postgres** | Redis (nova infra) |
+| Detecção de replay | **Revogar família toda se token usado é reapresentado** | Ignorar (sem proteção) |
+
+**Refresh token em cookie HttpOnly** → JavaScript não lê (XSS protegido); SameSite=Strict bloqueia CSRF; Secure garante HTTPS em produção.
+
+**Blacklist via Postgres:** cada request autenticada faz 1 query extra em `revoked_tokens` (índice em `jti`). Aceito para este serviço. Quando migrar para Redis: quando a latência de `IsRevokedAsync` aparecer em profiling com ≥ N req/s.
+
+**Rotação obrigatória:** cada `/auth/refresh` invalida o token anterior e emite novo. Reapresentação de token já consumido → sessão inteira revogada (detecção de roubo).
+
+### Novos endpoints
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `POST` | `/auth/token` | (modificado) emite access + refresh token via cookie |
+| `POST` | `/auth/refresh` | Rotaciona refresh token, retorna novo access token |
+| `POST` | `/auth/logout` | Revoga jti (blacklist) + refresh token; apaga cookie |
+
+### Consequências
+
+- Access token comprometido tem janela de 15 min.
+- Logout é imediato (jti na blacklist, cookie apagado).
+- +1 query por request autenticada (`IsRevokedAsync`); mitigável com cache local ou Redis se necessário.
+- `refresh_tokens` e `revoked_tokens` acumulam dados; adicionar cleanup periódico de registros expirados em produção.

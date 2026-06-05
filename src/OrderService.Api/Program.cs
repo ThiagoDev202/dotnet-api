@@ -10,6 +10,7 @@ using OrderService.Application.DTOs;
 using OrderService.Application.Security;
 using OrderService.Application.Services;
 using OrderService.Application.Validators;
+using OrderService.Domain.Repositories;
 using OrderService.Infrastructure.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -23,6 +24,24 @@ builder.Services.AddScoped<ConfirmOrderService>();
 builder.Services.AddScoped<CancelOrderService>();
 builder.Services.AddScoped<GetOrderService>();
 builder.Services.AddScoped<ListOrdersService>();
+
+// ── Refresh token services ────────────────────────────────────────────────────
+var refreshDays = builder.Configuration.GetSection("Jwt").GetValue("RefreshTokenExpirationDays", 7);
+builder.Services.AddScoped<IRefreshTokenIssuer>(sp =>
+    new RefreshTokenIssuer(
+        sp.GetRequiredService<IRefreshTokenRepository>(),
+        sp.GetRequiredService<IJwtTokenService>(),
+        sp.GetRequiredService<IUnitOfWork>(),
+        refreshDays));
+
+builder.Services.AddScoped<RefreshTokenService>(sp =>
+    new RefreshTokenService(
+        sp.GetRequiredService<IRefreshTokenRepository>(),
+        sp.GetRequiredService<IJwtTokenService>(),
+        sp.GetRequiredService<IUnitOfWork>(),
+        refreshDays));
+
+builder.Services.AddScoped<LogoutService>();
 
 // ── Validators (FluentValidation) ────────────────────────────────────────────
 builder.Services.AddScoped<IValidator<CreateOrderRequest>, CreateOrderRequestValidator>();
@@ -163,7 +182,6 @@ builder.Services.AddSwaggerGen(options =>
         }
     });
 
-    // Inclui os comentários XML dos controllers no Swagger
     var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
     if (File.Exists(xmlPath))
@@ -208,6 +226,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseAuthentication();
+
+// Verifica blacklist de JTIs após autenticação — rejeita tokens revogados por logout
+app.UseMiddleware<TokenBlacklistMiddleware>();
+
 app.UseAuthorization();
 
 app.MapControllers()

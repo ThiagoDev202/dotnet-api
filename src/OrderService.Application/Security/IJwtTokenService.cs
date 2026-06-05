@@ -2,5 +2,6 @@ namespace OrderService.Application.Security;
 
 public interface IJwtTokenService
 {
-    string GenerateToken(Guid customerId, string role);
+    (string Token, string Jti, DateTime ExpiresAt) GenerateAccessToken(Guid customerId, string role);
+    string GenerateRefreshTokenValue();
 }

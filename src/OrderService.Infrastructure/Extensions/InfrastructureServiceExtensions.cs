@@ -36,6 +36,8 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IOrderQueryRepository, OrderQueryRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
+        services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+        services.AddScoped<ITokenRevocationService, TokenRevocationService>();
 
         return services;
     }
