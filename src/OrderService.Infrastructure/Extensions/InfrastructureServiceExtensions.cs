@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OrderService.Application.Repositories;
+using OrderService.Application.Security;
 using OrderService.Domain.Repositories;
 using OrderService.Infrastructure.Persistence;
 using OrderService.Infrastructure.Repositories;
@@ -34,6 +35,7 @@ public static class InfrastructureServiceExtensions
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<IOrderQueryRepository, OrderQueryRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
+        services.AddScoped<IJwtTokenService, JwtTokenService>();
 
         return services;
     }
