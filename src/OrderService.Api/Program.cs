@@ -58,6 +58,9 @@ var jwtKey = jwtSection["Key"]
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        // Desabilita remapeamento automático de claim types (ex: "role" → ClaimTypes.Role),
+        // garantindo que User.IsInRole("Admin") e FindFirstValue("role") funcionem corretamente.
+        options.MapInboundClaims = false;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -67,7 +70,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = jwtSection["Issuer"],
             ValidAudience = jwtSection["Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
-            // "role" é o nome do claim no token — permite User.IsInRole("Admin")
             RoleClaimType = "role",
             ClockSkew = TimeSpan.FromSeconds(30)
         };
@@ -99,29 +101,36 @@ builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-    // Política global: 100 req/min por IP
+    // Política global: 100 req/min por IP; sem IP (testes/loopback) → sem limite
     options.AddPolicy("global", httpContext =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            factory: _ => new FixedWindowRateLimiterOptions
+    {
+        var ip = httpContext.Connection.RemoteIpAddress?.ToString();
+        return ip is null
+            ? RateLimitPartition.GetNoLimiter("no-ip")
+            : RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 100,
                 Window = TimeSpan.FromMinutes(1),
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0
-            }));
+            });
+    });
 
-    // Política para auth: mais restritiva (10 req/min por IP) para dificultar brute-force
+    // Política para auth: mais restritiva (10 req/min por IP) para dificultar brute-force;
+    // sem IP (testes/loopback) → sem limite
     options.AddPolicy("auth", httpContext =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            factory: _ => new FixedWindowRateLimiterOptions
+    {
+        var ip = httpContext.Connection.RemoteIpAddress?.ToString();
+        return ip is null
+            ? RateLimitPartition.GetNoLimiter("no-ip")
+            : RateLimitPartition.GetFixedWindowLimiter($"auth:{ip}", _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 10,
                 Window = TimeSpan.FromMinutes(1),
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0
-            }));
+            });
+    });
 
     options.OnRejected = async (context, cancellationToken) =>
     {

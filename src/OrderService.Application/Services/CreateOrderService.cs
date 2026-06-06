@@ -1,5 +1,4 @@
 using OrderService.Application.DTOs;
-using OrderService.Application.Exceptions;
 using OrderService.Application.Mappings;
 using OrderService.Domain.Entities;
 using OrderService.Domain.Exceptions;
@@ -36,7 +35,7 @@ public sealed class CreateOrderService
         foreach (var itemRequest in request.Items)
         {
             if (!productMap.TryGetValue(itemRequest.ProductId, out var product))
-                throw new NotFoundException($"Produto '{itemRequest.ProductId}' não encontrado.");
+                throw new DomainException($"Produto '{itemRequest.ProductId}' não encontrado.");
 
             if (!product.HasSufficientStock(itemRequest.Quantity))
                 throw new DomainException($"Estoque insuficiente para o produto '{itemRequest.ProductId}'.");

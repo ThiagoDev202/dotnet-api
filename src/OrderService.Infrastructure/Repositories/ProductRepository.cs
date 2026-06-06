@@ -40,7 +40,7 @@ internal sealed class ProductRepository : IProductRepository
              WHERE id = {1}
                AND available_quantity >= {0}
             """,
-            quantity, productId,
+            new object[] { quantity, productId },
             cancellationToken);
 
         return affected > 0;
@@ -57,7 +57,7 @@ internal sealed class ProductRepository : IProductRepository
                SET available_quantity = available_quantity + {0}
              WHERE id = {1}
             """,
-            quantity, productId,
+            new object[] { quantity, productId },
             cancellationToken);
     }
 }

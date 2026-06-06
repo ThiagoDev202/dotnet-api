@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Moq;
 using OrderService.Application.DTOs;
-using OrderService.Application.Exceptions;
 using OrderService.Application.Services;
 using OrderService.Domain.Entities;
 using OrderService.Domain.Exceptions;
@@ -66,7 +65,7 @@ public sealed class CreateOrderServiceTests
     }
 
     [Fact]
-    public async Task CreateAsync_ProductNotFound_ThrowsNotFoundException()
+    public async Task CreateAsync_ProductNotFound_ThrowsDomainException()
     {
         _productRepo
             .Setup(r => r.GetByIdsAsync(It.IsAny<IEnumerable<Guid>>(), default))
@@ -75,7 +74,7 @@ public sealed class CreateOrderServiceTests
         var request = new CreateOrderRequest("BRL", new[] { new OrderItemRequest(ProductId1, 1) });
 
         await _sut.Invoking(s => s.CreateAsync(request, CustomerId))
-            .Should().ThrowAsync<NotFoundException>()
+            .Should().ThrowAsync<DomainException>()
             .WithMessage($"*{ProductId1}*");
     }
 
