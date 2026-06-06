@@ -12,12 +12,12 @@ COPY src/OrderService.Infrastructure/OrderService.Infrastructure.csproj  src/Ord
 
 RUN dotnet restore src/OrderService.Api/OrderService.Api.csproj
 
-# Copia fontes e publica
+# Copia fontes e publica (restore implícito verifica cache — sem --no-restore para evitar
+# falhas com pacotes de analyzer que ficam em paths separados do global packages folder)
 COPY src/ src/
 RUN dotnet publish src/OrderService.Api/OrderService.Api.csproj \
     -c Release \
-    -o /app/publish \
-    --no-restore
+    -o /app/publish
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime

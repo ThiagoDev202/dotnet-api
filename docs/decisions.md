@@ -70,3 +70,23 @@ Por request: `SET LOCAL app.current_customer_id / app.is_admin` dentro da transa
 **Blacklist Postgres:** +1 query por request autenticada (`SELECT` em `revoked_tokens` com índice em `jti`). Custo aceito. Migrar para Redis quando a latência aparecer em profiling.
 
 **Limpeza automática:** `ExpiredTokenCleanupService` (`BackgroundService`) roda a cada hora e apaga registros expirados das duas tabelas. Não requer agendamento externo.
+
+---
+
+## ADR-006 — Estratégia Docker e migrations automáticas
+
+### Migrations no startup (`MigrateAsync()` em `Program.cs`)
+
+Escolhido em vez de step separado (init container ou script de entrypoint). A API só inicia após o healthcheck do Postgres passar (`depends_on: condition: service_healthy`), eliminando o risco de corrida. Para projetos maiores com múltiplas instâncias em deploy paralelo, considerar lock distribuído ou migration em pipeline separado.
+
+### Postgres superuser no compose
+
+As migrations incluem DDL privilegiado: `CREATE ROLE orders_app`, `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`, `GRANT`. Essas operações exigem `SUPERUSER` ou `CREATEROLE`. Em desenvolvimento Docker usa-se o superuser `postgres` por conveniência. Em produção: separar a execução das migrations em um step com credenciais elevadas, e a conexão da aplicação com `orders_app` (sem `SUPERUSER`).
+
+### RLS bypass em desenvolvimento
+
+Conectar como superuser contorna o RLS — superuser ignora políticas independente de `FORCE ROW LEVEL SECURITY`. O isolamento de dados em runtime é garantido pela camada de aplicação (JWT + verificação de `customerId` nos services). O RLS atua como defesa em profundidade para conexões de não-superuser, que é o cenário de produção com `orders_app`.
+
+### Dockerfile multi-stage
+
+Stage `sdk:8.0` para restore/build/publish, stage `aspnet:8.0` para runtime. Imagem final sem SDK (~230 MB vs ~800 MB). Usuário não-root (uid 1001) criado no stage runtime para reduzir superfície de ataque.
