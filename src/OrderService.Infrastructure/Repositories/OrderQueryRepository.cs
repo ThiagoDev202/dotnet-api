@@ -40,10 +40,16 @@ internal sealed class OrderQueryRepository : IOrderQueryRepository
             query = query.Where(o => o.Status == filter.Status.Value);
 
         if (filter.From.HasValue)
-            query = query.Where(o => o.CreatedAt >= filter.From.Value);
+        {
+            var from = ToUtc(filter.From.Value);
+            query = query.Where(o => o.CreatedAt >= from);
+        }
 
         if (filter.To.HasValue)
-            query = query.Where(o => o.CreatedAt <= filter.To.Value);
+        {
+            var to = ToUtc(filter.To.Value);
+            query = query.Where(o => o.CreatedAt <= to);
+        }
 
         var totalCount = await query.CountAsync(ct);
 
@@ -58,4 +64,13 @@ internal sealed class OrderQueryRepository : IOrderQueryRepository
 
         return new PagedResult<Order>(items, totalCount, page, pageSize);
     }
+
+    // A coluna created_at é 'timestamp with time zone'; o Npgsql exige DateTime UTC.
+    // Datas vindas da query string ("yyyy-MM-dd") chegam como Unspecified — normalizamos.
+    private static DateTime ToUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Utc => value,
+        DateTimeKind.Local => value.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+    };
 }

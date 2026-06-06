@@ -272,6 +272,43 @@ public sealed class OrderFlowTests
             .NotIntersectWith(page2.Items.Select(o => o.Id));
     }
 
+    [Fact]
+    public async Task GET_orders_filtra_por_intervalo_de_datas_em_formato_data_simples()
+    {
+        var productId = await _factory.SeedProductAsync("Agenda", 15m, 30);
+        var customerId = Guid.NewGuid();
+        var client = _factory.CreateAuthenticatedClient(customerId);
+
+        var orderId = await CreateOrderAsync(client, productId, 1);
+
+        // Cliente envia datas no formato natural "yyyy-MM-dd" (sem hora/timezone),
+        // que o model binding interpreta como DateTime Kind=Unspecified.
+        var from = DateTime.UtcNow.AddDays(-1).ToString("yyyy-MM-dd");
+        var to = DateTime.UtcNow.AddDays(1).ToString("yyyy-MM-dd");
+
+        var response = await client.GetAsync($"/orders?from={from}&to={to}&page=1&pageSize=20");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var result = await response.Content
+            .ReadFromJsonAsync<PagedResult<OrderResponse>>(JsonOptions);
+        result!.Items.Should().Contain(o => o.Id == orderId);
+    }
+
+    [Fact]
+    public async Task GET_orders_filtra_por_intervalo_de_datas_passado_retorna_vazio()
+    {
+        var productId = await _factory.SeedProductAsync("Régua", 5m, 30);
+        var client = _factory.CreateAuthenticatedClient(Guid.NewGuid());
+        await CreateOrderAsync(client, productId, 1);
+
+        var response = await client.GetAsync("/orders?from=2019-01-01&to=2020-01-01");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var result = await response.Content
+            .ReadFromJsonAsync<PagedResult<OrderResponse>>(JsonOptions);
+        result!.Items.Should().BeEmpty();
+    }
+
     // ── Helper ─────────────────────────────────────────────────────────────────
 
     private static async Task<Guid> CreateOrderAsync(
