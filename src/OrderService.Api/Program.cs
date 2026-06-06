@@ -3,6 +3,7 @@ using System.Threading.RateLimiting;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using OrderService.Api.Middleware;
@@ -12,6 +13,7 @@ using OrderService.Application.Services;
 using OrderService.Application.Validators;
 using OrderService.Domain.Repositories;
 using OrderService.Infrastructure.Extensions;
+using OrderService.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -198,6 +200,13 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+
+// ── Migrations automáticas no startup ────────────────────────────────────────
+await using (var scope = app.Services.CreateAsyncScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<OrderServiceDbContext>();
+    await db.Database.MigrateAsync();
+}
 
 // ── Pipeline de middlewares ───────────────────────────────────────────────────
 

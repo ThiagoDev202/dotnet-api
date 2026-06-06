@@ -1,0 +1,17 @@
+bin/
+obj/
+out/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+.env
+tests/
+docs/
+specs/
+*.md
+.gitignore
+.editorconfig
+TestResults/
+coverage*/

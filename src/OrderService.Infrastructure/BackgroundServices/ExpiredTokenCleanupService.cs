@@ -39,10 +39,12 @@ public sealed class ExpiredTokenCleanupService : BackgroundService
             var now = DateTime.UtcNow;
 
             var revokedDeleted = await db.Database.ExecuteSqlRawAsync(
-                "DELETE FROM revoked_tokens WHERE expires_at < {0}", now, ct);
+                "DELETE FROM revoked_tokens WHERE expires_at < {0}",
+                new object[] { now }, ct);
 
             var refreshDeleted = await db.Database.ExecuteSqlRawAsync(
-                "DELETE FROM refresh_tokens WHERE expires_at < {0} AND revoked_at IS NOT NULL", now, ct);
+                "DELETE FROM refresh_tokens WHERE expires_at < {0} AND revoked_at IS NOT NULL",
+                new object[] { now }, ct);
 
             if (revokedDeleted > 0 || refreshDeleted > 0)
                 _logger.LogInformation(
