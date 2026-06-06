@@ -8,24 +8,25 @@ using OrderService.IntegrationTests.Infrastructure;
 namespace OrderService.IntegrationTests.Isolation;
 
 /// <summary>
-/// Garante que a camada de aplicação isola pedidos entre clientes.
-/// A política RLS do PostgreSQL é uma segunda linha de defesa; aqui validamos
-/// os checks de authorização implementados nos Application Services.
+/// Garante o isolamento de pedidos entre clientes com o RLS ATIVO (runtime conecta como
+/// orders_app, igual à produção). Sob RLS, o pedido de outro cliente é invisível: acesso
+/// cross-tenant retorna 404 (não 403) — o banco filtra a linha antes da camada de aplicação,
+/// o que também evita vazar a existência do recurso.
 /// </summary>
-[Collection("Integration")]
+[Collection("RlsIntegration")]
 public sealed class AccessControlTests
 {
-    private readonly OrderApiFactory _factory;
+    private readonly RlsApiFactory _factory;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
     };
 
-    public AccessControlTests(OrderApiFactory factory) => _factory = factory;
+    public AccessControlTests(RlsApiFactory factory) => _factory = factory;
 
     [Fact]
-    public async Task GET_order_de_outro_cliente_retorna_403()
+    public async Task GET_order_de_outro_cliente_retorna_404_pois_RLS_oculta_a_linha()
     {
         var productId = await _factory.SeedProductAsync("Produto RLS-1", 30m, 5);
         var customerA = Guid.NewGuid();
@@ -37,11 +38,11 @@ public sealed class AccessControlTests
         var orderIdA = await CreateOrderAsync(clientA, productId, 1);
 
         var response = await clientB.GetAsync($"/orders/{orderIdA}");
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
-    public async Task Confirm_de_pedido_de_outro_cliente_retorna_403()
+    public async Task Confirm_de_pedido_de_outro_cliente_retorna_404_pois_RLS_oculta_a_linha()
     {
         var productId = await _factory.SeedProductAsync("Produto RLS-2", 80m, 5);
         var customerA = Guid.NewGuid();
@@ -53,11 +54,11 @@ public sealed class AccessControlTests
         var orderIdA = await CreateOrderAsync(clientA, productId, 1);
 
         var response = await clientB.PostAsync($"/orders/{orderIdA}/confirm", null);
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
-    public async Task Cancel_de_pedido_de_outro_cliente_retorna_403()
+    public async Task Cancel_de_pedido_de_outro_cliente_retorna_404_pois_RLS_oculta_a_linha()
     {
         var productId = await _factory.SeedProductAsync("Produto RLS-3", 60m, 5);
         var customerA = Guid.NewGuid();
@@ -69,7 +70,7 @@ public sealed class AccessControlTests
         var orderIdA = await CreateOrderAsync(clientA, productId, 1);
 
         var response = await clientB.PostAsync($"/orders/{orderIdA}/cancel", null);
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]

@@ -202,10 +202,23 @@ builder.Services.AddSwaggerGen(options =>
 var app = builder.Build();
 
 // ── Migrations automáticas no startup ────────────────────────────────────────
-await using (var scope = app.Services.CreateAsyncScope())
+// As migrations executam DDL privilegiado (CREATE ROLE, ENABLE RLS, GRANT), então
+// rodam com a conexão de migração (superuser). O runtime conecta com uma role
+// restrita (orders_app) sujeita ao RLS — ver ConnectionStrings no compose.
+// Em ambientes sem MigrationConnection definida (ex.: testes), cai na DefaultConnection.
 {
-    var db = scope.ServiceProvider.GetRequiredService<OrderServiceDbContext>();
-    await db.Database.MigrateAsync();
+    var migrationConnection =
+        app.Configuration.GetConnectionString("MigrationConnection")
+        ?? app.Configuration.GetConnectionString("DefaultConnection");
+
+    var migrationOptions = new DbContextOptionsBuilder<OrderServiceDbContext>()
+        .UseNpgsql(migrationConnection,
+            npgsql => npgsql.MigrationsAssembly(typeof(OrderServiceDbContext).Assembly.FullName))
+        .UseSnakeCaseNamingConvention()
+        .Options;
+
+    await using var migrationDb = new OrderServiceDbContext(migrationOptions);
+    await migrationDb.Database.MigrateAsync();
 }
 
 // ── Pipeline de middlewares ───────────────────────────────────────────────────

@@ -25,8 +25,13 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      # Conecta como superuser para que as migrations possam executar DDL (CREATE ROLE, RLS, GRANT)
+      # Runtime conecta com a role restrita orders_app, sujeita ao RLS (isolamento por
+      # cliente garantido no banco, não só na aplicação). Senha definida na migration InitialCreate.
       ConnectionStrings__DefaultConnection: >-
+        Host=postgres;Port=5432;Database=orderservice;
+        Username=orders_app;Password=${APP_DB_PASSWORD:-orders_app_password}
+      # Migração usa superuser para executar DDL privilegiado (CREATE ROLE, ENABLE RLS, GRANT).
+      ConnectionStrings__MigrationConnection: >-
         Host=postgres;Port=5432;Database=orderservice;
         Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}
       Jwt__Key: ${JWT_KEY:?JWT_KEY obrigatório — defina no .env ou como variável de ambiente}
