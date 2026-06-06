@@ -92,10 +92,13 @@ docker compose down -v       # + apaga volume do Postgres
 | Variável | Obrigatório | Default | Descrição |
 |---|---|---|---|
 | `JWT_KEY` | Sim | — | Chave secreta JWT (mínimo 32 chars) |
-| `POSTGRES_PASSWORD` | Não | `postgres` | Senha do superuser Postgres |
+| `POSTGRES_PASSWORD` | Não | `postgres` | Senha do superuser Postgres (usado apenas para rodar as migrations) |
+| `APP_DB_PASSWORD` | Não | `orders_app_password` | Senha da role de runtime `orders_app` (RLS enforced) |
 | `Jwt__Issuer` | Não | `OrderService` | Issuer do token |
 | `Jwt__Audience` | Não | `OrderServiceApi` | Audience do token |
 | `ASPNETCORE_ENVIRONMENT` | Não | `Development` | Habilita Swagger quando `Development` |
+
+> **Conexões com o banco.** As migrations rodam com o superuser (`MigrationConnection`) porque executam DDL privilegiado (`CREATE ROLE`, `ENABLE ROW LEVEL SECURITY`, `GRANT`). Já o runtime conecta com a role restrita `orders_app` (`DefaultConnection`), sujeita ao RLS — o isolamento por cliente é garantido no próprio banco, não só na aplicação.
 
 ---
 
@@ -122,13 +125,20 @@ O refresh token chega automaticamente no cookie `HttpOnly` (capturado pelo `-c c
 
 ### Criar pedido
 
+> **Produtos de demonstração.** Não há endpoint de cadastro de produto; o banco já nasce com dois produtos semeados via migration (`SeedDemoProducts`), prontos para uso:
+>
+> | productId | Nome | Preço | Estoque |
+> |---|---|---|---|
+> | `11111111-1111-1111-1111-111111111111` | Caneta Azul | R$ 10,00 | 100 |
+> | `22222222-2222-2222-2222-222222222222` | Caderno Universitário | R$ 25,50 | 100 |
+
 ```bash
 curl -X POST http://localhost:8080/orders \
   -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "items": [
-      { "productId": "<PRODUCT_ID>", "quantity": 2 }
+      { "productId": "11111111-1111-1111-1111-111111111111", "quantity": 2 }
     ],
     "currency": "BRL"
   }'
@@ -151,9 +161,11 @@ curl http://localhost:8080/orders/<ORDER_ID> \
 ### Listar pedidos com filtros
 
 ```bash
-curl "http://localhost:8080/orders?status=Confirmed&page=1&pageSize=10" \
+curl "http://localhost:8080/orders?status=Confirmed&from=2026-01-01&to=2026-12-31&page=1&pageSize=10" \
   -H "Authorization: Bearer <TOKEN>"
 ```
+
+Os filtros `from`/`to` aceitam data simples (`yyyy-MM-dd`) ou ISO-8601 (`2026-01-01T00:00:00Z`) — ambos interpretados em UTC.
 
 ### Renovar token
 
@@ -203,7 +215,7 @@ docker run --rm \
   dotnet test OrderService.sln
 ```
 
-Resultado esperado: **109/109 testes passando** (80 unitários + 29 integração, incluindo race condition de estoque).
+Resultado esperado: **111/111 testes passando** (80 unitários + 31 integração), incluindo race condition de estoque, filtro de pedidos por intervalo de datas e isolamento por cliente com **RLS enforced** (acesso cross-tenant valida o retorno **404** conectando como a role `orders_app`, igual à produção).
 
 ---
 
@@ -212,7 +224,7 @@ Resultado esperado: **109/109 testes passando** (80 unitários + 29 integração
 - **JWT** com 15 min de validade + claim `jti` para revogação imediata no logout
 - **Refresh token** de 7 dias em cookie `HttpOnly + Secure + SameSite=Strict`; rotação obrigatória a cada uso; replay detectado revoga a família inteira
 - **Blacklist de JTIs** em Postgres (`revoked_tokens`), verificada a cada request autenticada
-- **RLS** (Row-Level Security) no banco: clientes só enxergam seus próprios pedidos, mesmo em acesso direto ao banco
+- **RLS** (Row-Level Security) **enforced em runtime**: o app conecta como a role não-superuser `orders_app`, então o isolamento por cliente é garantido pelo próprio Postgres — clientes só enxergam seus pedidos, mesmo em acesso direto ao banco. Por consequência, acessar o pedido de outro cliente retorna **404** (a linha fica invisível, sem vazar sua existência), não 403
 - **Rate limiting**: 100 req/min global, 10 req/min em `/auth` (proteção contra brute-force)
 - **Security headers**: `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Permissions-Policy`
 - **HSTS** (365 dias) em produção

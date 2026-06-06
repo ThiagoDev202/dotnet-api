@@ -51,6 +51,8 @@ Implementação: `ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY` nas ta
 
 Por request: `SET LOCAL app.current_customer_id / app.is_admin` dentro da transação (escopo transacional — sem vazamento no pool de conexões). A aplicação conecta com role `orders_app` sem permissão de owner.
 
+**Consequência de contrato:** com o RLS enforced (runtime como `orders_app`), o pedido de outro cliente fica **invisível** — a query não retorna a linha. Logo, acesso cross-tenant resulta em **404 Not Found** (não 403 Forbidden), o que é mais seguro por não revelar a existência do recurso. O check de posse na camada de aplicação (que retornaria 403) permanece como defesa redundante, mas na prática o RLS filtra antes.
+
 ---
 
 ## ADR-005 — Refresh token + revogação
@@ -79,13 +81,13 @@ Por request: `SET LOCAL app.current_customer_id / app.is_admin` dentro da transa
 
 Escolhido em vez de step separado (init container ou script de entrypoint). A API só inicia após o healthcheck do Postgres passar (`depends_on: condition: service_healthy`), eliminando o risco de corrida. Para projetos maiores com múltiplas instâncias em deploy paralelo, considerar lock distribuído ou migration em pipeline separado.
 
-### Postgres superuser no compose
+### Duas conexões: migração (superuser) × runtime (`orders_app`)
 
-As migrations incluem DDL privilegiado: `CREATE ROLE orders_app`, `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`, `GRANT`. Essas operações exigem `SUPERUSER` ou `CREATEROLE`. Em desenvolvimento Docker usa-se o superuser `postgres` por conveniência. Em produção: separar a execução das migrations em um step com credenciais elevadas, e a conexão da aplicação com `orders_app` (sem `SUPERUSER`).
+As migrations incluem DDL privilegiado: `CREATE ROLE orders_app`, `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`, `GRANT`. Essas operações exigem `SUPERUSER` ou `CREATEROLE`. Por isso o compose define **duas** connection strings: `MigrationConnection` (superuser `postgres`, usada só pelo `MigrateAsync` no startup) e `DefaultConnection` (role restrita `orders_app`, usada pelo runtime). Assim o RLS fica **enforced em produção** sem abrir mão das migrations automáticas. A migration `GrantTokenTablesToAppRole` concede a `orders_app` o DML em `refresh_tokens`/`revoked_tokens` (criadas depois do `GRANT` inicial), necessário para os fluxos de auth.
 
-### RLS bypass em desenvolvimento
+### RLS bypass apenas nos testes
 
-Conectar como superuser contorna o RLS — superuser ignora políticas independente de `FORCE ROW LEVEL SECURITY`. O isolamento de dados em runtime é garantido pela camada de aplicação (JWT + verificação de `customerId` nos services). O RLS atua como defesa em profundidade para conexões de não-superuser, que é o cenário de produção com `orders_app`.
+Conectar como superuser contorna o RLS — superuser ignora políticas independente de `FORCE ROW LEVEL SECURITY`. A suíte de integração padrão (`OrderApiFactory`) conecta como superuser de propósito, para semear/inspecionar dados livremente; ali o isolamento exercitado é o da camada de aplicação. Já o RLS **enforced** (cenário de produção) é validado por uma factory dedicada (`RlsApiFactory`) que conecta como `orders_app`: os testes de `AccessControlTests` rodam sob ela e comprovam o isolamento real no banco (acesso cross-tenant → 404).
 
 ### Dockerfile multi-stage
 
