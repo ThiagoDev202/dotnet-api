@@ -32,7 +32,7 @@ public sealed class ConfirmOrderServiceTests
 
     private static Order BuildPlacedOrder()
     {
-        var item = OrderItem.Create(ProductId, 10m, 2);
+        var item = OrderItem.Create(ProductId, 10m, "BRL", 2);
         return Order.Place(CustomerId, "BRL", new[] { item });
     }
 

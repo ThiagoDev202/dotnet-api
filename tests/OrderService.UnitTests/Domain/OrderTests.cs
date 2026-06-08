@@ -7,8 +7,8 @@ namespace OrderService.UnitTests.Domain;
 
 public sealed class OrderTests
 {
-    private static OrderItem ValidItem(decimal unitPrice = 10m, int quantity = 2) =>
-        OrderItem.Create(Guid.NewGuid(), unitPrice, quantity);
+    private static OrderItem ValidItem(decimal unitPrice = 10m, int quantity = 2, string currency = "BRL") =>
+        OrderItem.Create(Guid.NewGuid(), unitPrice, currency, quantity);
 
     // ─── Criação (Place) ────────────────────────────────────────────────────
 
@@ -60,8 +60,8 @@ public sealed class OrderTests
     {
         var items = new[]
         {
-            OrderItem.Create(Guid.NewGuid(), 10m, 3),  // 30
-            OrderItem.Create(Guid.NewGuid(), 25m, 2),  // 50
+            OrderItem.Create(Guid.NewGuid(), 10m, "BRL", 3),  // 30
+            OrderItem.Create(Guid.NewGuid(), 25m, "BRL", 2),  // 50
         };
 
         var order = Order.Place(Guid.NewGuid(), "BRL", items);
@@ -164,9 +164,9 @@ public sealed class OrderTests
     {
         var items = new[]
         {
-            OrderItem.Create(Guid.NewGuid(), 5m, 4),   // 20
-            OrderItem.Create(Guid.NewGuid(), 3m, 10),  // 30
-            OrderItem.Create(Guid.NewGuid(), 7m, 1),   //  7
+            OrderItem.Create(Guid.NewGuid(), 5m, "USD", 4),   // 20
+            OrderItem.Create(Guid.NewGuid(), 3m, "USD", 10),  // 30
+            OrderItem.Create(Guid.NewGuid(), 7m, "USD", 1),   //  7
         };
 
         var order = Order.Place(Guid.NewGuid(), "USD", items);

@@ -2,10 +2,12 @@ using OrderService.Domain.Exceptions;
 
 namespace OrderService.Domain.ValueObjects;
 
-public sealed record Money
+public sealed class Money : IEquatable<Money>
 {
-    public decimal Amount { get; }
-    public string Currency { get; }
+    public decimal Amount { get; private set; }
+    public string Currency { get; private set; } = null!;
+
+    private Money() { }  // for EF Core OwnsOne
 
     private Money(decimal amount, string currency)
     {
@@ -15,6 +17,8 @@ public sealed record Money
 
     public static Money Of(decimal amount, string currency)
     {
+        // Permite 0 para suportar o valor identidade em somas (ex.: Total de um agregado vazio);
+        // OrderItem.Create valida amount > 0 separadamente.
         if (amount < 0)
             throw new DomainException("O valor não pode ser negativo.");
         if (string.IsNullOrWhiteSpace(currency) || currency.Length != 3)
@@ -28,6 +32,19 @@ public sealed record Money
             throw new DomainException("Não é possível somar valores em moedas diferentes.");
         return new Money(a.Amount + b.Amount, a.Currency);
     }
+
+    public bool Equals(Money? other) =>
+        other is not null &&
+        Amount == other.Amount &&
+        string.Equals(Currency, other.Currency, StringComparison.OrdinalIgnoreCase);
+
+    public override bool Equals(object? obj) => Equals(obj as Money);
+
+    public override int GetHashCode() => HashCode.Combine(Amount, Currency.ToUpperInvariant());
+
+    public static bool operator ==(Money? a, Money? b) => a is null ? b is null : a.Equals(b);
+
+    public static bool operator !=(Money? a, Money? b) => !(a == b);
 
     public override string ToString() => $"{Amount:F2} {Currency}";
 }

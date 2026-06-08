@@ -22,7 +22,7 @@ public sealed class GetOrderServiceTests
 
     private static Order BuildOrder(Guid customerId)
     {
-        var item = OrderItem.Create(ProductId, 10m, 1);
+        var item = OrderItem.Create(ProductId, 10m, "BRL", 1);
         return Order.Place(customerId, "BRL", new[] { item });
     }
 

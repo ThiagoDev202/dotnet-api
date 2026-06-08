@@ -28,7 +28,7 @@ public sealed class CancelOrderServiceTests
 
     private static Order BuildPlacedOrder()
     {
-        var item = OrderItem.Create(ProductId, 10m, 3);
+        var item = OrderItem.Create(ProductId, 10m, "BRL", 3);
         return Order.Place(CustomerId, "BRL", new[] { item });
     }
 

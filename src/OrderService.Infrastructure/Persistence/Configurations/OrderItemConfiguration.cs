@@ -16,10 +16,17 @@ internal sealed class OrderItemConfiguration : IEntityTypeConfiguration<OrderIte
 
         builder.Property(i => i.ProductId).HasColumnName("product_id").IsRequired();
 
-        builder.Property(i => i.UnitPrice)
-            .HasColumnName("unit_price")
-            .HasPrecision(18, 2)
-            .IsRequired();
+        builder.OwnsOne(i => i.UnitPrice, money =>
+        {
+            money.Property(m => m.Amount)
+                .HasColumnName("unit_price")
+                .HasPrecision(18, 2)
+                .IsRequired();
+            money.Property(m => m.Currency)
+                .HasColumnName("unit_price_currency")
+                .HasMaxLength(3)
+                .IsRequired();
+        });
 
         builder.Property(i => i.Quantity)
             .HasColumnName("quantity")

@@ -24,7 +24,7 @@ public sealed class ListOrdersServiceTests
 
     private static Order BuildOrder(Guid customerId)
     {
-        var item = OrderItem.Create(ProductId, 5m, 2);
+        var item = OrderItem.Create(ProductId, 5m, "BRL", 2);
         return Order.Place(customerId, "BRL", new[] { item });
     }
 

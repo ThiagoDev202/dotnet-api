@@ -80,11 +80,6 @@ namespace OrderService.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("quantity");
 
-                    b.Property<decimal>("UnitPrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)")
-                        .HasColumnName("unit_price");
-
                     b.HasKey("Id")
                         .HasName("pk_order_items");
 
@@ -92,6 +87,22 @@ namespace OrderService.Infrastructure.Migrations
                         .HasDatabaseName("ix_order_items_order_id");
 
                     b.ToTable("order_items", (string)null);
+
+                    b.OwnsOne("OrderService.Domain.ValueObjects.Money", "UnitPrice", b1 =>
+                        {
+                            b1.Property<decimal>("Amount")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("numeric(18,2)")
+                                .HasColumnName("unit_price");
+
+                            b1.Property<string>("Currency")
+                                .IsRequired()
+                                .HasMaxLength(3)
+                                .HasColumnType("character varying(3)")
+                                .HasColumnName("unit_price_currency");
+
+                            b1.WithOwner();
+                        });
                 });
 
             modelBuilder.Entity("OrderService.Domain.Entities.Product", b =>

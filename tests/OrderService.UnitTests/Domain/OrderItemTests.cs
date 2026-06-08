@@ -7,6 +7,7 @@ namespace OrderService.UnitTests.Domain;
 public sealed class OrderItemTests
 {
     private readonly Guid _validProductId = Guid.NewGuid();
+    private const string DefaultCurrency = "BRL";
 
     // ─── Quantity boundary ───────────────────────────────────────────────────
 
@@ -16,7 +17,7 @@ public sealed class OrderItemTests
     [InlineData(int.MinValue)]
     public void Create_ComQuantidadeInvalida_DeveLancarDomainException(int quantity)
     {
-        var act = () => OrderItem.Create(_validProductId, 10m, quantity);
+        var act = () => OrderItem.Create(_validProductId, 10m, DefaultCurrency, quantity);
 
         act.Should().Throw<DomainException>()
             .WithMessage("*quantidade*");
@@ -25,7 +26,7 @@ public sealed class OrderItemTests
     [Fact]
     public void Create_ComQuantidadeUm_DeveSucceder()
     {
-        var item = OrderItem.Create(_validProductId, 10m, 1);
+        var item = OrderItem.Create(_validProductId, 10m, DefaultCurrency, 1);
 
         item.Quantity.Value.Should().Be(1);
     }
@@ -38,7 +39,7 @@ public sealed class OrderItemTests
     [InlineData(-100)]
     public void Create_ComUnitPriceInvalido_DeveLancarDomainException(decimal unitPrice)
     {
-        var act = () => OrderItem.Create(_validProductId, unitPrice, 1);
+        var act = () => OrderItem.Create(_validProductId, unitPrice, DefaultCurrency, 1);
 
         act.Should().Throw<DomainException>()
             .WithMessage("*preço*");
@@ -47,9 +48,9 @@ public sealed class OrderItemTests
     [Fact]
     public void Create_ComUnitPriceMinimo_DeveSucceder()
     {
-        var item = OrderItem.Create(_validProductId, 0.01m, 1);
+        var item = OrderItem.Create(_validProductId, 0.01m, DefaultCurrency, 1);
 
-        item.UnitPrice.Should().Be(0.01m);
+        item.UnitPrice.Amount.Should().Be(0.01m);
     }
 
     // ─── ProductId ──────────────────────────────────────────────────────────
@@ -57,7 +58,7 @@ public sealed class OrderItemTests
     [Fact]
     public void Create_ComProductIdVazio_DeveLancarDomainException()
     {
-        var act = () => OrderItem.Create(Guid.Empty, 10m, 1);
+        var act = () => OrderItem.Create(Guid.Empty, 10m, DefaultCurrency, 1);
 
         act.Should().Throw<DomainException>()
             .WithMessage("*produto*");
@@ -70,10 +71,11 @@ public sealed class OrderItemTests
     {
         var productId = Guid.NewGuid();
 
-        var item = OrderItem.Create(productId, 12.50m, 4);
+        var item = OrderItem.Create(productId, 12.50m, DefaultCurrency, 4);
 
         item.ProductId.Should().Be(productId);
-        item.UnitPrice.Should().Be(12.50m);
+        item.UnitPrice.Amount.Should().Be(12.50m);
+        item.UnitPrice.Currency.Should().Be(DefaultCurrency);
         item.Quantity.Value.Should().Be(4);
         item.Id.Should().NotBe(Guid.Empty);
     }

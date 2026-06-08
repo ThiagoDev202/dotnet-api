@@ -19,7 +19,7 @@ internal static class OrderMapper
         new(
             item.Id,
             item.ProductId,
-            item.UnitPrice,
+            item.UnitPrice.Amount,
             item.Quantity.Value,
-            item.UnitPrice * item.Quantity.Value);
+            item.UnitPrice.Amount * item.Quantity.Value);
 }

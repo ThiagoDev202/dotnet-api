@@ -20,7 +20,7 @@ public sealed class Order
     {
         get
         {
-            var amount = _items.Sum(i => i.UnitPrice * i.Quantity.Value);
+            var amount = _items.Sum(i => i.UnitPrice.Amount * i.Quantity.Value);
             return Money.Of(amount, Currency);
         }
     }

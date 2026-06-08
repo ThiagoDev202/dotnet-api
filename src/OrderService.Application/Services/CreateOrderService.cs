@@ -40,7 +40,7 @@ public sealed class CreateOrderService
             if (!product.HasSufficientStock(itemRequest.Quantity))
                 throw new DomainException($"Estoque insuficiente para o produto '{itemRequest.ProductId}'.");
 
-            items.Add(OrderItem.Create(itemRequest.ProductId, product.UnitPrice, itemRequest.Quantity));
+            items.Add(OrderItem.Create(itemRequest.ProductId, product.UnitPrice, request.Currency, itemRequest.Quantity));
         }
 
         var order = Order.Place(customerId, request.Currency, items);
