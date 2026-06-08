@@ -25,7 +25,7 @@ API REST para gestão de **Pedidos** com itens e validação de estoque, constru
 
 ```
 src/
-  OrderService.Domain/          # Entidades, Value Objects, invariantes (DDD). Sem dependências externas.
+  OrderService.Domain/          # Entidades, Value Objects (Money, Quantity), invariantes (DDD). Sem dependências externas.
   OrderService.Application/     # Casos de uso, DTOs, validações, abstrações.
   OrderService.Infrastructure/  # EF Core, repositórios, migrations, JWT, concorrência, RLS.
   OrderService.Api/             # Controllers, composição (DI), middleware, Swagger.
@@ -35,6 +35,8 @@ tests/
 ```
 
 Dependências apontam para dentro: `Domain` ← `Application` ← `Infrastructure` / `Api`.
+
+O domínio usa Value Objects com invariantes no construtor: **`Money`** (amount + currency; soma exige mesma moeda) e **`Quantity`** (sempre > 0). `Money` é mapeado via `OwnsOne` (`unit_price` + `unit_price_currency`).
 
 ---
 
@@ -51,6 +53,8 @@ Dependências apontam para dentro: `Domain` ← `Application` ← `Infrastructur
 | GET | `/orders/{id}` | Bearer | Consulta pedido + itens |
 | GET | `/orders` | Bearer | Lista com paginação e filtros (`customerId`, `status`, `from`, `to`, `page`, `pageSize`) |
 
+> `/auth/token` é um **mock de autenticação** (teste técnico) — aceita qualquer `customerId`; a `role` é validada contra `{Customer, Admin}`. Em produção, trocar por um IdP real. Token inválido/expirado em `/auth/refresh` retorna **401**. Na listagem, `pageSize` é capeado em **100**.
+
 ---
 
 ## Como rodar
@@ -65,6 +69,7 @@ Edite `.env` com seus valores:
 
 ```env
 POSTGRES_PASSWORD=sua_senha_postgres
+APP_DB_PASSWORD=senha_orders_app_min16chars
 JWT_KEY=chave-jwt-minimo-32-caracteres-troque-aqui
 ```
 
@@ -91,12 +96,13 @@ docker compose down -v       # + apaga volume do Postgres
 
 | Variável | Obrigatório | Default | Descrição |
 |---|---|---|---|
-| `JWT_KEY` | Sim | — | Chave secreta JWT (mínimo 32 chars) |
-| `POSTGRES_PASSWORD` | Não | `postgres` | Senha do superuser Postgres (usado apenas para rodar as migrations) |
-| `APP_DB_PASSWORD` | Não | `orders_app_password` | Senha da role de runtime `orders_app` (RLS enforced) |
+| `JWT_KEY` | Sim | — | Chave secreta JWT (mínimo 32 chars; validada no startup) |
+| `POSTGRES_PASSWORD` | Não | `postgres` | Senha do superuser Postgres (só para rodar as migrations) |
+| `APP_DB_PASSWORD` | **Sim** | — | Senha da role de runtime `orders_app`. O compose falha se ausente (`:?`); sincronizada na role no startup via `set_config`+`ALTER ROLE` |
 | `Jwt__Issuer` | Não | `OrderService` | Issuer do token |
 | `Jwt__Audience` | Não | `OrderServiceApi` | Audience do token |
-| `ASPNETCORE_ENVIRONMENT` | Não | `Development` | Habilita Swagger quando `Development` |
+| `ASPNETCORE_ENVIRONMENT` | Não | `Production` (no compose) | Em `Production`: sem stack trace no HTTP, HSTS ligado, não carrega `appsettings.Development.json` |
+| `SwaggerEnabled` | Não | `false` | Expõe o Swagger fora do ambiente Development (o compose usa `true`) |
 
 > **Conexões com o banco.** As migrations rodam com o superuser (`MigrationConnection`) porque executam DDL privilegiado (`CREATE ROLE`, `ENABLE ROW LEVEL SECURITY`, `GRANT`). Já o runtime conecta com a role restrita `orders_app` (`DefaultConnection`), sujeita ao RLS — o isolamento por cliente é garantido no próprio banco, não só na aplicação.
 
@@ -143,6 +149,8 @@ curl -X POST http://localhost:8080/orders \
     "currency": "BRL"
   }'
 ```
+
+> `currency` é validada contra um whitelist **ISO-4217** (BRL, USD, EUR, …); código inválido retorna **400**. A moeda do pedido é aplicada a cada item — `OrderItem.UnitPrice` é um `Money` (amount + currency).
 
 ### Confirmar pedido
 
@@ -225,8 +233,10 @@ Resultado esperado: **111/111 testes passando** (80 unitários + 31 integração
 - **Refresh token** de 7 dias em cookie `HttpOnly + Secure + SameSite=Strict`; rotação obrigatória a cada uso; replay detectado revoga a família inteira
 - **Blacklist de JTIs** em Postgres (`revoked_tokens`), verificada a cada request autenticada
 - **RLS** (Row-Level Security) **enforced em runtime**: o app conecta como a role não-superuser `orders_app`, então o isolamento por cliente é garantido pelo próprio Postgres — clientes só enxergam seus pedidos, mesmo em acesso direto ao banco. Por consequência, acessar o pedido de outro cliente retorna **404** (a linha fica invisível, sem vazar sua existência), não 403
-- **Rate limiting**: 100 req/min global, 10 req/min em `/auth` (proteção contra brute-force)
-- **Security headers**: `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Permissions-Policy`
+- **Rate limiting**: 100 req/min global, 10 req/min em `/auth` (proteção contra brute-force). `ForwardedHeaders` antes do limiter garante que o limite por IP use o IP real do cliente atrás de proxy reverso
+- **Security headers**: `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy: default-src 'none'`
+- **CORS** restritivo com `AllowCredentials` (necessário para o cookie HttpOnly); origins por whitelist de config — vazio em produção significa nenhum header emitido (secure-by-default)
+- **Validação de `Jwt:Key` no startup**: mínimo 32 chars e rejeição do placeholder `CHANGE_ME` em produção (fail-fast em vez de subir com chave fraca)
 - **HSTS** (365 dias) em produção
 
 ---

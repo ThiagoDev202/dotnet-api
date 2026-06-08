@@ -49,7 +49,7 @@ Defesa em profundidade além do JWT. Mesmo com bug de autorização na aplicaç�
 
 Implementação: `ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY` nas tabelas de pedidos. Política: `customer_id = current_setting('app.current_customer_id')::uuid OR current_setting('app.is_admin') = 'true'`.
 
-Por request: `SET LOCAL app.current_customer_id / app.is_admin` dentro da transação (escopo transacional — sem vazamento no pool de conexões). A aplicação conecta com role `orders_app` sem permissão de owner.
+Por request, dentro da transação: `set_config('app.current_customer_id', $1, true)` e `set_config('app.is_admin', $2, true)` — **parametrizado** (sem interpolação de string), eliminando o vetor de injeção SQL justamente na fronteira do isolamento por tenant. O `true` final dá escopo transacional (sem vazamento no pool de conexões). A aplicação conecta com a role `orders_app`, sem permissão de owner.
 
 **Consequência de contrato:** com o RLS enforced (runtime como `orders_app`), o pedido de outro cliente fica **invisível** — a query não retorna a linha. Logo, acesso cross-tenant resulta em **404 Not Found** (não 403 Forbidden), o que é mais seguro por não revelar a existência do recurso. O check de posse na camada de aplicação (que retornaria 403) permanece como defesa redundante, mas na prática o RLS filtra antes.
 
@@ -92,3 +92,12 @@ Conectar como superuser contorna o RLS — superuser ignora políticas independe
 ### Dockerfile multi-stage
 
 Stage `sdk:8.0` para restore/build/publish, stage `aspnet:8.0` para runtime. Imagem final sem SDK (~230 MB vs ~800 MB). Usuário não-root (uid 1001) criado no stage runtime para reduzir superfície de ataque.
+
+---
+
+## ADR-007 — Value Objects para Money e Quantity
+
+Primitivos (`decimal`, `int`) não carregam invariantes — a validação se espalha pelos serviços (Primitive Obsession). `Money` (amount + currency) e `Quantity` (>0) encapsulam suas regras no construtor: `Money.Of` exige moeda ISO-4217 de 3 caracteres e amount ≥ 0; soma de moedas diferentes lança `DomainException`. `Quantity.Of` exige > 0. `Order.Total` retorna `Money` (soma dos itens). `OrderItem.UnitPrice` é `Money`, mapeado por `OwnsOne` (colunas `unit_price` + `unit_price_currency` — ver migration `0007`); `Quantity` usa value converter para a coluna `integer`. `Money` permite amount 0 para servir de identidade em somas de agregado vazio; `OrderItem.Create` valida amount > 0 à parte.
+
+---
+
