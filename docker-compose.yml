@@ -23,13 +23,15 @@ services:
     ports:
       - "8080:8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: Production
+      SwaggerEnabled: "true"
       ASPNETCORE_URLS: http://+:8080
       # Runtime conecta com a role restrita orders_app, sujeita ao RLS (isolamento por
-      # cliente garantido no banco, não só na aplicação). Senha definida na migration InitialCreate.
+      # cliente garantido no banco, não só na aplicação).
+      # APP_DB_PASSWORD obrigatório — defina no .env (nunca commitar o valor real).
       ConnectionStrings__DefaultConnection: >-
         Host=postgres;Port=5432;Database=orderservice;
-        Username=orders_app;Password=${APP_DB_PASSWORD:-orders_app_password}
+        Username=orders_app;Password=${APP_DB_PASSWORD:?APP_DB_PASSWORD obrigatório — defina no .env}
       # Migração usa superuser para executar DDL privilegiado (CREATE ROLE, ENABLE RLS, GRANT).
       ConnectionStrings__MigrationConnection: >-
         Host=postgres;Port=5432;Database=orderservice;
