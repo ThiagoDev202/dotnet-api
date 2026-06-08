@@ -23,6 +23,24 @@ public sealed class DomainExceptionHandler : IExceptionHandler
 
         switch (exception)
         {
+            case InvalidTokenException ex:
+                problem = new ProblemDetails
+                {
+                    Status = StatusCodes.Status401Unauthorized,
+                    Title = "Não autorizado",
+                    Detail = ex.Message
+                };
+                break;
+
+            case UnauthorizedAccessException ex:
+                problem = new ProblemDetails
+                {
+                    Status = StatusCodes.Status401Unauthorized,
+                    Title = "Não autorizado",
+                    Detail = ex.Message
+                };
+                break;
+
             case NotFoundException ex:
                 problem = new ProblemDetails
                 {

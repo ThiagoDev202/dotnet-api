@@ -1,14 +1,14 @@
 using System.Security.Cryptography;
 using System.Text;
 using OrderService.Application.DTOs;
+using OrderService.Application.Exceptions;
 using OrderService.Application.Security;
 using OrderService.Domain.Entities;
-using OrderService.Domain.Exceptions;
 using OrderService.Domain.Repositories;
 
 namespace OrderService.Application.Services;
 
-public sealed class RefreshTokenService
+public sealed class RefreshTokenService : IRefreshTokenService
 {
     private readonly IRefreshTokenRepository _refreshTokenRepository;
     private readonly IJwtTokenService _jwtTokenService;
@@ -32,22 +32,28 @@ public sealed class RefreshTokenService
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(rawRefreshToken))
-            throw new DomainException("O refresh token não pode ser vazio.");
+            throw new InvalidTokenException("O refresh token não pode ser vazio.");
 
         var hash = HashToken(rawRefreshToken);
         var stored = await _refreshTokenRepository.GetByHashAsync(hash, cancellationToken)
-            ?? throw new DomainException("Refresh token inválido ou não encontrado.");
+            ?? throw new InvalidTokenException("Refresh token inválido ou não encontrado.");
 
         if (!stored.IsActive)
         {
             // Detecção de roubo por replay: token já usado → revogar toda a família
             if (stored.IsRevoked)
-                await _refreshTokenRepository.RevokeAllByCustomerAsync(stored.CustomerId, cancellationToken);
+            {
+                await _unitOfWork.ExecuteInTransactionAsync(async () =>
+                {
+                    await _refreshTokenRepository.RevokeAllByCustomerAsync(stored.CustomerId, cancellationToken);
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
+                }, cancellationToken);
+            }
 
-            throw new DomainException("Refresh token já utilizado ou revogado.");
+            throw new InvalidTokenException("Refresh token já utilizado ou revogado.");
         }
 
-        var (accessToken, _, _) = _jwtTokenService.GenerateAccessToken(stored.CustomerId, "Customer");
+        var (accessToken, _, _) = _jwtTokenService.GenerateAccessToken(stored.CustomerId, stored.Role);
         var newRaw = _jwtTokenService.GenerateRefreshTokenValue();
         var newHash = HashToken(newRaw);
         var newExpiry = DateTime.UtcNow.AddDays(_refreshTokenExpirationDays);

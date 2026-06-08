@@ -1,9 +1,9 @@
 using FluentAssertions;
 using Moq;
+using OrderService.Application.Exceptions;
 using OrderService.Application.Security;
 using OrderService.Application.Services;
 using OrderService.Domain.Entities;
-using OrderService.Domain.Exceptions;
 using OrderService.Domain.Repositories;
 
 namespace OrderService.UnitTests.Application;
@@ -60,20 +60,20 @@ public sealed class RefreshTokenServiceTests
     // ─── Token inexistente ───────────────────────────────────────────────────
 
     [Fact]
-    public async Task RefreshAsync_TokenNaoEncontrado_LancaDomainException()
+    public async Task RefreshAsync_TokenNaoEncontrado_LancaInvalidTokenException()
     {
         _refreshRepo.Setup(r => r.GetByHashAsync(TokenHash, It.IsAny<CancellationToken>()))
             .ReturnsAsync((RefreshToken?)null);
 
         var act = async () => await _sut.RefreshAsync(RawToken);
 
-        await act.Should().ThrowAsync<DomainException>().WithMessage("*inválido*");
+        await act.Should().ThrowAsync<InvalidTokenException>().WithMessage("*inválido*");
     }
 
     // ─── Token revogado (replay) ─────────────────────────────────────────────
 
     [Fact]
-    public async Task RefreshAsync_TokenRevogado_RevogaFamiliaELancaException()
+    public async Task RefreshAsync_TokenRevogado_RevogaFamiliaELancaInvalidTokenException()
     {
         var stored = BuildActiveToken();
         stored.Revoke();
@@ -82,7 +82,7 @@ public sealed class RefreshTokenServiceTests
 
         var act = async () => await _sut.RefreshAsync(RawToken);
 
-        await act.Should().ThrowAsync<DomainException>().WithMessage("*revogado*");
+        await act.Should().ThrowAsync<InvalidTokenException>().WithMessage("*revogado*");
         _refreshRepo.Verify(
             r => r.RevokeAllByCustomerAsync(CustomerId, It.IsAny<CancellationToken>()),
             Times.Once);
@@ -91,11 +91,11 @@ public sealed class RefreshTokenServiceTests
     // ─── Raw token vazio ─────────────────────────────────────────────────────
 
     [Fact]
-    public async Task RefreshAsync_RawTokenVazio_LancaDomainException()
+    public async Task RefreshAsync_RawTokenVazio_LancaInvalidTokenException()
     {
         var act = async () => await _sut.RefreshAsync("   ");
 
-        await act.Should().ThrowAsync<DomainException>().WithMessage("*vazio*");
+        await act.Should().ThrowAsync<InvalidTokenException>().WithMessage("*vazio*");
     }
 
     // ─── Hash determinístico ─────────────────────────────────────────────────
