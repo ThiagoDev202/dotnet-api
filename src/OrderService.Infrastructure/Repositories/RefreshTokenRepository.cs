@@ -21,6 +21,14 @@ internal sealed class RefreshTokenRepository : IRefreshTokenRepository
     public async Task AddAsync(RefreshToken token, CancellationToken cancellationToken = default) =>
         await _context.RefreshTokens.AddAsync(token, cancellationToken);
 
+    /// <summary>
+    /// Marca como revogados todos os refresh tokens ativos do cliente.
+    /// <para>
+    /// ⚠️ Este método NÃO chama SaveChangesAsync.
+    /// O caller é responsável por persistir as mudanças dentro de uma transação
+    /// usando <c>IUnitOfWork.ExecuteInTransactionAsync</c> seguido de <c>SaveChangesAsync</c>.
+    /// </para>
+    /// </summary>
     public async Task RevokeAllByCustomerAsync(Guid customerId, CancellationToken cancellationToken = default)
     {
         var tokens = await _context.RefreshTokens

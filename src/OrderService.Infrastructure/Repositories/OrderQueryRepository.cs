@@ -54,7 +54,8 @@ internal sealed class OrderQueryRepository : IOrderQueryRepository
         var totalCount = await query.CountAsync(ct);
 
         var page = filter.Page < 1 ? 1 : filter.Page;
-        var pageSize = filter.PageSize < 1 ? 20 : filter.PageSize;
+        const int MaxPageSize = 100;
+        var pageSize = filter.PageSize < 1 ? 20 : Math.Min(filter.PageSize, MaxPageSize);
 
         var items = await query
             .OrderByDescending(o => o.CreatedAt)

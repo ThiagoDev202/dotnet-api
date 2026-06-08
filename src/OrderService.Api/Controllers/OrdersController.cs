@@ -36,8 +36,15 @@ public sealed class OrdersController : ControllerBase
         _validator = validator;
     }
 
-    private Guid RequestingCustomerId =>
-        Guid.Parse(User.FindFirstValue("customerId")!);
+    private Guid RequestingCustomerId
+    {
+        get
+        {
+            if (!Guid.TryParse(User.FindFirstValue("customerId"), out var id))
+                throw new UnauthorizedAccessException("Token não contém claim 'customerId' válido.");
+            return id;
+        }
+    }
 
     private bool IsAdmin =>
         User.IsInRole("Admin") || User.FindFirstValue("role") == "Admin";
