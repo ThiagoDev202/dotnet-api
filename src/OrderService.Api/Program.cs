@@ -45,7 +45,7 @@ builder.Services.AddScoped<IRefreshTokenService>(sp =>
         sp.GetRequiredService<IUnitOfWork>(),
         refreshDays));
 
-builder.Services.AddScoped<LogoutService>();
+builder.Services.AddScoped<ILogoutService, LogoutService>();
 
 // ── Validators (FluentValidation) ────────────────────────────────────────────
 builder.Services.AddScoped<IValidator<CreateOrderRequest>, CreateOrderRequestValidator>();
@@ -279,7 +279,9 @@ if (effectiveJwtKey.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)
         setCmd.Parameters.AddWithValue(appDbPassword);
         await setCmd.ExecuteNonQueryAsync();
 
-        // ALTER ROLE lê a variável de sessão via current_setting — %L do format() garante escape correto
+        // DDL (ALTER ROLE) não aceita parâmetros posicionais ($1/$2).
+        // format('%L', valor) é o mecanismo equivalente do PostgreSQL para DDL: escapa aspas simples,
+        // prevenindo SQL injection — análogo a um prepared statement em contexto de DDL.
         await using var alterCmd = syncConn.CreateCommand();
         alterCmd.CommandText = """
             DO $$
@@ -349,13 +351,6 @@ app.UseAuthorization();
 
 app.MapControllers()
    .RequireRateLimiting("global");
-
-// Rota de auth com política mais restritiva
-app.MapControllerRoute(
-    name: "auth",
-    pattern: "auth/{action}",
-    defaults: new { controller = "Auth" })
-   .RequireRateLimiting("auth");
 
 app.MapHealthChecks("/health");
 

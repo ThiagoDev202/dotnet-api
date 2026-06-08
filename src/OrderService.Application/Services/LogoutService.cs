@@ -1,10 +1,9 @@
 using OrderService.Application.Security;
-using OrderService.Domain.Exceptions;
 using OrderService.Domain.Repositories;
 
 namespace OrderService.Application.Services;
 
-public sealed class LogoutService
+public sealed class LogoutService : ILogoutService
 {
     private readonly IRefreshTokenRepository _refreshTokenRepository;
     private readonly ITokenRevocationService _revocationService;

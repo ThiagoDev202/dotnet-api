@@ -17,6 +17,9 @@ public sealed class RefreshToken
     public bool IsExpired => DateTime.UtcNow >= ExpiresAt;
     public bool IsActive => !IsRevoked && !IsExpired;
 
+    private static readonly HashSet<string> AllowedRoles =
+        new(StringComparer.OrdinalIgnoreCase) { "Customer", "Admin" };
+
     private RefreshToken() { }
 
     public static RefreshToken Place(Guid customerId, string tokenHash, DateTime expiresAt, string role = "Customer")
@@ -27,8 +30,8 @@ public sealed class RefreshToken
             throw new DomainException("O hash do token não pode ser vazio.");
         if (expiresAt <= DateTime.UtcNow)
             throw new DomainException("A data de expiração deve ser futura.");
-        if (string.IsNullOrWhiteSpace(role))
-            throw new DomainException("A role é obrigatória.");
+        if (string.IsNullOrWhiteSpace(role) || !AllowedRoles.Contains(role))
+            throw new DomainException($"Role inválida. Valores aceitos: {string.Join(", ", AllowedRoles)}.");
 
         return new RefreshToken
         {

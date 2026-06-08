@@ -43,6 +43,30 @@ public sealed class RefreshTokenTests
         act.Should().Throw<DomainException>().WithMessage("*expiração*");
     }
 
+    [Theory]
+    [InlineData("foobar")]
+    [InlineData("superuser")]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Place_ComRoleInvalida_DeveLancarDomainException(string role)
+    {
+        var act = () => RefreshToken.Place(Guid.NewGuid(), "hash", DateTime.UtcNow.AddDays(7), role);
+
+        act.Should().Throw<DomainException>().WithMessage("*Role inválida*");
+    }
+
+    [Theory]
+    [InlineData("Customer")]
+    [InlineData("customer")]
+    [InlineData("Admin")]
+    [InlineData("ADMIN")]
+    public void Place_ComRoleValida_DeveSucceder(string role)
+    {
+        var act = () => RefreshToken.Place(Guid.NewGuid(), "hash", DateTime.UtcNow.AddDays(7), role);
+
+        act.Should().NotThrow();
+    }
+
     [Fact]
     public void Place_ComDadosValidos_DeveRetornarTokenAtivo()
     {

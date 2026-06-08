@@ -2,20 +2,21 @@ using System.Security.Claims;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using OrderService.Application.DTOs;
 using OrderService.Application.Security;
-using OrderService.Application.Services;
 
 namespace OrderService.Api.Controllers;
 
 [ApiController]
 [Route("auth")]
+[EnableRateLimiting("auth")]
 public sealed class AuthController : ControllerBase
 {
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IRefreshTokenIssuer _refreshTokenIssuer;
     private readonly IRefreshTokenService _refreshTokenService;
-    private readonly LogoutService _logoutService;
+    private readonly ILogoutService _logoutService;
     private readonly IValidator<TokenRequest> _tokenValidator;
     private readonly IWebHostEnvironment _env;
 
@@ -23,7 +24,7 @@ public sealed class AuthController : ControllerBase
         IJwtTokenService jwtTokenService,
         IRefreshTokenIssuer refreshTokenIssuer,
         IRefreshTokenService refreshTokenService,
-        LogoutService logoutService,
+        ILogoutService logoutService,
         IValidator<TokenRequest> tokenValidator,
         IWebHostEnvironment env)
     {
