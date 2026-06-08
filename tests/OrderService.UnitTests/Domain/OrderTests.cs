@@ -66,7 +66,7 @@ public sealed class OrderTests
 
         var order = Order.Place(Guid.NewGuid(), "BRL", items);
 
-        order.Total.Should().Be(80m);
+        order.Total.Amount.Should().Be(80m);
     }
 
     [Fact]
@@ -171,6 +171,6 @@ public sealed class OrderTests
 
         var order = Order.Place(Guid.NewGuid(), "USD", items);
 
-        order.Total.Should().Be(57m);
+        order.Total.Amount.Should().Be(57m);
     }
 }

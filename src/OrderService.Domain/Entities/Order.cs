@@ -1,5 +1,6 @@
 using OrderService.Domain.Enums;
 using OrderService.Domain.Exceptions;
+using OrderService.Domain.ValueObjects;
 
 namespace OrderService.Domain.Entities;
 
@@ -15,7 +16,14 @@ public sealed class Order
 
     public IReadOnlyCollection<OrderItem> Items => _items.AsReadOnly();
 
-    public decimal Total => _items.Sum(i => i.UnitPrice * i.Quantity);
+    public Money Total
+    {
+        get
+        {
+            var amount = _items.Sum(i => i.UnitPrice * i.Quantity.Value);
+            return Money.Of(amount, Currency);
+        }
+    }
 
     private Order() { }
 

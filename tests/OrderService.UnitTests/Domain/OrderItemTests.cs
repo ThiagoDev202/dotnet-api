@@ -27,7 +27,7 @@ public sealed class OrderItemTests
     {
         var item = OrderItem.Create(_validProductId, 10m, 1);
 
-        item.Quantity.Should().Be(1);
+        item.Quantity.Value.Should().Be(1);
     }
 
     // ─── UnitPrice boundary ─────────────────────────────────────────────────
@@ -74,7 +74,7 @@ public sealed class OrderItemTests
 
         item.ProductId.Should().Be(productId);
         item.UnitPrice.Should().Be(12.50m);
-        item.Quantity.Should().Be(4);
+        item.Quantity.Value.Should().Be(4);
         item.Id.Should().NotBe(Guid.Empty);
     }
 }

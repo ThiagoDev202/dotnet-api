@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using OrderService.Domain.Entities;
+using OrderService.Domain.ValueObjects;
 
 namespace OrderService.Infrastructure.Persistence.Configurations;
 
@@ -22,6 +23,7 @@ internal sealed class OrderItemConfiguration : IEntityTypeConfiguration<OrderIte
 
         builder.Property(i => i.Quantity)
             .HasColumnName("quantity")
+            .HasConversion(q => q.Value, v => Quantity.Of(v))
             .IsRequired();
 
         // FK shadow property para order_id

@@ -11,7 +11,7 @@ internal static class OrderMapper
             order.CustomerId,
             order.Status.ToString(),
             order.Currency,
-            order.Total,
+            order.Total.Amount,
             order.CreatedAt,
             order.Items.Select(i => i.ToResponse()).ToList().AsReadOnly());
 
@@ -20,6 +20,6 @@ internal static class OrderMapper
             item.Id,
             item.ProductId,
             item.UnitPrice,
-            item.Quantity,
-            item.UnitPrice * item.Quantity);
+            item.Quantity.Value,
+            item.UnitPrice * item.Quantity.Value);
 }
