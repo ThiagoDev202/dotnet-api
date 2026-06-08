@@ -1,7 +1,9 @@
 using System.Text;
 using System.Threading.RateLimiting;
+using Npgsql;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -36,7 +38,7 @@ builder.Services.AddScoped<IRefreshTokenIssuer>(sp =>
         sp.GetRequiredService<IUnitOfWork>(),
         refreshDays));
 
-builder.Services.AddScoped<RefreshTokenService>(sp =>
+builder.Services.AddScoped<IRefreshTokenService>(sp =>
     new RefreshTokenService(
         sp.GetRequiredService<IRefreshTokenRepository>(),
         sp.GetRequiredService<IJwtTokenService>(),
@@ -47,6 +49,7 @@ builder.Services.AddScoped<LogoutService>();
 
 // ── Validators (FluentValidation) ────────────────────────────────────────────
 builder.Services.AddScoped<IValidator<CreateOrderRequest>, CreateOrderRequestValidator>();
+builder.Services.AddScoped<IValidator<TokenRequest>, TokenRequestValidator>();
 
 // ── Controllers ───────────────────────────────────────────────────────────────
 builder.Services.AddControllers();
@@ -56,6 +59,12 @@ builder.Services.AddEndpointsApiExplorer();
 var jwtSection = builder.Configuration.GetSection("Jwt");
 var jwtKey = jwtSection["Key"]
     ?? throw new InvalidOperationException("JWT Key não configurada. Defina 'Jwt:Key' nas variáveis de ambiente.");
+
+if (jwtKey.Length < 32)
+    throw new InvalidOperationException(
+        $"JWT Key insuficiente ({jwtKey.Length} chars). " +
+        "HMAC-SHA256 requer mínimo 32 caracteres. " +
+        "Gere uma chave segura com: openssl rand -base64 32");
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -97,6 +106,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddAuthorization();
+
+// ── ForwardedHeaders (para rate limiting correto atrás de proxy) ─────────────
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    // Em produção, restringir aos IPs conhecidos dos proxies:
+    // options.KnownProxies.Add(IPAddress.Parse("10.0.0.1"));
+});
 
 // ── Rate Limiting (proteção contra abuso) ────────────────────────────────────
 builder.Services.AddRateLimiter(options =>
@@ -143,6 +161,20 @@ builder.Services.AddRateLimiter(options =>
     };
 });
 
+// ── CORS (necessário para cookies cross-origin com AllowCredentials) ──────────
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        var origins = builder.Configuration
+            .GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+        policy.WithOrigins(origins)
+              .AllowCredentials()
+              .AllowAnyHeader()
+              .WithMethods("GET", "POST", "PUT", "DELETE");
+    });
+});
+
 // ── ProblemDetails + Exception handler ───────────────────────────────────────
 builder.Services.AddExceptionHandler<DomainExceptionHandler>();
 builder.Services.AddProblemDetails();
@@ -165,7 +197,9 @@ builder.Services.AddSwaggerGen(options =>
         Title = "Order Service API",
         Version = "v1",
         Description = "API REST de Pedidos — teste técnico .NET Sênior. " +
-                      "Obtenha um token JWT em POST /auth/token e use no botão 'Authorize'."
+                      "Obtenha um token JWT em POST /auth/token e use no botão 'Authorize'. " +
+                      "⚠️ POST /auth/token é um mock de autenticação para demonstração — " +
+                      "em produção, use um IdP real (Keycloak, Auth0, Azure AD B2C)."
     });
 
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -201,6 +235,13 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+// Valida JWT Key padrão apenas em produção (após Build, configuração efetiva já aplicada)
+var effectiveJwtKey = app.Configuration["Jwt:Key"] ?? "";
+if (effectiveJwtKey.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)
+    && app.Environment.IsProduction())
+    throw new InvalidOperationException(
+        "JWT Key ainda está com valor padrão. Configure uma chave aleatória e segura via variável de ambiente Jwt__Key.");
+
 // ── Migrations automáticas no startup ────────────────────────────────────────
 // As migrations executam DDL privilegiado (CREATE ROLE, ENABLE RLS, GRANT), então
 // rodam com a conexão de migração (superuser). O runtime conecta com uma role
@@ -219,6 +260,39 @@ var app = builder.Build();
 
     await using var migrationDb = new OrderServiceDbContext(migrationOptions);
     await migrationDb.Database.MigrateAsync();
+
+    // Sincroniza a senha da role de runtime a cada startup usando a conexão de superuser.
+    // Migrations rodam uma vez, mas a senha pode mudar via .env (ex.: rotação). Executar aqui
+    // garante consistência independente do estado do volume.
+    // Lê a senha da DefaultConnection (já injetada pelo compose) — APP_DB_PASSWORD não é
+    // exposta como variável de ambiente no container, apenas interpolada no compose.
+    var runtimeConnection = app.Configuration.GetConnectionString("DefaultConnection") ?? "";
+    var appDbPassword = new Npgsql.NpgsqlConnectionStringBuilder(runtimeConnection).Password;
+    if (!string.IsNullOrWhiteSpace(appDbPassword) && !string.IsNullOrWhiteSpace(migrationConnection))
+    {
+        await using var syncConn = new Npgsql.NpgsqlConnection(migrationConnection);
+        await syncConn.OpenAsync();
+
+        // set_config primeiro (usa parâmetro SQL — sem interpolação)
+        await using var setCmd = syncConn.CreateCommand();
+        setCmd.CommandText = "SELECT set_config('app.orders_app_password', $1, false)";
+        setCmd.Parameters.AddWithValue(appDbPassword);
+        await setCmd.ExecuteNonQueryAsync();
+
+        // ALTER ROLE lê a variável de sessão via current_setting — %L do format() garante escape correto
+        await using var alterCmd = syncConn.CreateCommand();
+        alterCmd.CommandText = """
+            DO $$
+            DECLARE v_pass text := current_setting('app.orders_app_password', true);
+            BEGIN
+                IF v_pass IS NOT NULL AND v_pass <> '' THEN
+                    EXECUTE format('ALTER ROLE orders_app PASSWORD %L', v_pass);
+                END IF;
+            END
+            $$;
+            """;
+        await alterCmd.ExecuteNonQueryAsync();
+    }
 }
 
 // ── Pipeline de middlewares ───────────────────────────────────────────────────
@@ -239,14 +313,21 @@ app.Use(async (context, next) =>
     context.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
     context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
     context.Response.Headers.Append("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
+    context.Response.Headers.Append("Content-Security-Policy", "default-src 'none'");
     await next();
 });
 
 app.UseHttpsRedirection();
 
+// ForwardedHeaders deve estar ANTES de UseRateLimiter para que RemoteIpAddress
+// reflita o IP real do cliente quando a API estiver atrás de proxy reverso.
+app.UseForwardedHeaders();
 app.UseRateLimiter();
 
-if (app.Environment.IsDevelopment())
+// Swagger controlado por variável — exposto em Development ou quando SwaggerEnabled=true
+var swaggerEnabled = app.Environment.IsDevelopment() ||
+                     builder.Configuration.GetValue<bool>("SwaggerEnabled");
+if (swaggerEnabled)
 {
     app.UseSwagger();
     app.UseSwaggerUI(options =>
@@ -255,6 +336,9 @@ if (app.Environment.IsDevelopment())
         options.DisplayRequestDuration();
     });
 }
+
+// CORS antes de Authentication para que o preflight OPTIONS seja tratado corretamente
+app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
 

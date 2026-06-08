@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OrderService.Application.DTOs;
@@ -13,60 +14,58 @@ public sealed class AuthController : ControllerBase
 {
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IRefreshTokenIssuer _refreshTokenIssuer;
-    private readonly RefreshTokenService _refreshTokenService;
+    private readonly IRefreshTokenService _refreshTokenService;
     private readonly LogoutService _logoutService;
+    private readonly IValidator<TokenRequest> _tokenValidator;
     private readonly IWebHostEnvironment _env;
 
     public AuthController(
         IJwtTokenService jwtTokenService,
         IRefreshTokenIssuer refreshTokenIssuer,
-        RefreshTokenService refreshTokenService,
+        IRefreshTokenService refreshTokenService,
         LogoutService logoutService,
+        IValidator<TokenRequest> tokenValidator,
         IWebHostEnvironment env)
     {
         _jwtTokenService = jwtTokenService;
         _refreshTokenIssuer = refreshTokenIssuer;
         _refreshTokenService = refreshTokenService;
         _logoutService = logoutService;
+        _tokenValidator = tokenValidator;
         _env = env;
     }
 
     /// <summary>
-    /// Emite um access token JWT (body) e um refresh token (cookie HttpOnly).
+    /// [MOCK DE AUTENTICAÇÃO — apenas para fins de demonstração do teste técnico]
+    /// Em produção, este endpoint deve verificar credenciais contra um Identity Provider
+    /// (Keycloak, Auth0, Azure AD B2C, ASP.NET Core Identity).
+    /// AVISO: Não implementa autenticação real — qualquer customerId/role é aceito.
     /// Role aceita: "Customer" ou "Admin".
+    /// Emite um access token JWT (body) e um refresh token (cookie HttpOnly).
     /// O refresh token é armazenado em cookie HttpOnly+Secure+SameSite=Strict — protegido contra XSS e CSRF.
     /// </summary>
     [HttpPost("token")]
-    [ProducesResponseType(typeof(TokenResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(AccessTokenResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GenerateToken(
         [FromBody] TokenRequest request,
         CancellationToken cancellationToken)
     {
-        if (request.CustomerId == Guid.Empty)
-            return ValidationProblem(new ValidationProblemDetails
-            {
-                Status = StatusCodes.Status400BadRequest,
-                Title = "Dados inválidos",
-                Detail = "O campo 'customerId' é obrigatório e não pode ser o GUID vazio.",
-                Errors = { ["customerId"] = ["O customerId não pode ser um GUID vazio (all-zeros)."] }
-            });
-
-        if (string.IsNullOrWhiteSpace(request.Role))
-            return ValidationProblem(new ValidationProblemDetails
-            {
-                Status = StatusCodes.Status400BadRequest,
-                Title = "Dados inválidos",
-                Detail = "O campo 'role' é obrigatório. Valores aceitos: 'Customer', 'Admin'.",
-                Errors = { ["role"] = ["O campo role é obrigatório."] }
-            });
+        var validation = await _tokenValidator.ValidateAsync(request, cancellationToken);
+        if (!validation.IsValid)
+        {
+            foreach (var error in validation.Errors)
+                ModelState.AddModelError(error.PropertyName, error.ErrorMessage);
+            return ValidationProblem(ModelState);
+        }
 
         var (accessToken, _, _) = _jwtTokenService.GenerateAccessToken(request.CustomerId, request.Role);
-        var (rawRefresh, refreshExpiry) = await _refreshTokenIssuer.IssueAsync(request.CustomerId, cancellationToken);
+        var (rawRefresh, refreshExpiry) = await _refreshTokenIssuer.IssueAsync(
+            request.CustomerId, request.Role, cancellationToken);
 
         SetRefreshCookie(rawRefresh, refreshExpiry);
 
-        return Ok(new TokenResponse(accessToken));
+        return Ok(new AccessTokenResponse(accessToken));
     }
 
     /// <summary>
@@ -75,7 +74,7 @@ public sealed class AuthController : ControllerBase
     /// Se um token já usado for apresentado, toda a sessão do cliente é revogada (proteção contra replay).
     /// </summary>
     [HttpPost("refresh")]
-    [ProducesResponseType(typeof(TokenResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(AccessTokenResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Refresh(CancellationToken cancellationToken)
     {
@@ -91,7 +90,7 @@ public sealed class AuthController : ControllerBase
         var (response, newRaw, newExpiry) = await _refreshTokenService.RefreshAsync(rawRefresh, cancellationToken);
 
         SetRefreshCookie(newRaw, newExpiry);
-        return Ok(new TokenResponse(response.AccessToken));
+        return Ok(new AccessTokenResponse(response.AccessToken));
     }
 
     /// <summary>
@@ -139,6 +138,3 @@ public sealed class AuthController : ControllerBase
         });
     }
 }
-
-public sealed record TokenRequest(Guid CustomerId, string Role);
-public sealed record TokenResponse(string Token);
