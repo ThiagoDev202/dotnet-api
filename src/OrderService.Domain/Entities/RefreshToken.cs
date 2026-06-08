@@ -7,6 +7,7 @@ public sealed class RefreshToken
     public Guid Id { get; private set; }
     public Guid CustomerId { get; private set; }
     public string TokenHash { get; private set; } = null!;
+    public string Role { get; private set; } = "Customer";
     public DateTime ExpiresAt { get; private set; }
     public DateTime? RevokedAt { get; private set; }
     public string? ReplacedBy { get; private set; }
@@ -18,7 +19,7 @@ public sealed class RefreshToken
 
     private RefreshToken() { }
 
-    public static RefreshToken Place(Guid customerId, string tokenHash, DateTime expiresAt)
+    public static RefreshToken Place(Guid customerId, string tokenHash, DateTime expiresAt, string role = "Customer")
     {
         if (customerId == Guid.Empty)
             throw new DomainException("O id do cliente é obrigatório.");
@@ -26,12 +27,15 @@ public sealed class RefreshToken
             throw new DomainException("O hash do token não pode ser vazio.");
         if (expiresAt <= DateTime.UtcNow)
             throw new DomainException("A data de expiração deve ser futura.");
+        if (string.IsNullOrWhiteSpace(role))
+            throw new DomainException("A role é obrigatória.");
 
         return new RefreshToken
         {
             Id = Guid.NewGuid(),
             CustomerId = customerId,
             TokenHash = tokenHash,
+            Role = role,
             ExpiresAt = expiresAt,
             CreatedAt = DateTime.UtcNow
         };
@@ -55,6 +59,6 @@ public sealed class RefreshToken
         RevokedAt = DateTime.UtcNow;
         ReplacedBy = newTokenHash;
 
-        return Place(CustomerId, newTokenHash, newExpiresAt);
+        return Place(CustomerId, newTokenHash, newExpiresAt, Role);
     }
 }

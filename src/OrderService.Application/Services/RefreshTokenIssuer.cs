@@ -25,13 +25,14 @@ public sealed class RefreshTokenIssuer : IRefreshTokenIssuer
 
     public async Task<(string RawToken, DateTime ExpiresAt)> IssueAsync(
         Guid customerId,
+        string role,
         CancellationToken cancellationToken = default)
     {
         var rawToken = _jwtTokenService.GenerateRefreshTokenValue();
         var hash = RefreshTokenService.HashToken(rawToken);
         var expiresAt = DateTime.UtcNow.AddDays(_refreshTokenExpirationDays);
 
-        var token = RefreshToken.Place(customerId, hash, expiresAt);
+        var token = RefreshToken.Place(customerId, hash, expiresAt, role);
 
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {

@@ -26,6 +26,12 @@ internal sealed class RefreshTokenConfiguration : IEntityTypeConfiguration<Refre
         builder.HasIndex(r => r.CustomerId).HasDatabaseName("ix_refresh_tokens_customer");
         builder.HasIndex(r => r.ExpiresAt).HasDatabaseName("ix_refresh_tokens_expires");
 
+        builder.Property(r => r.Role)
+            .HasColumnName("role")
+            .HasMaxLength(20)
+            .IsRequired()
+            .HasDefaultValue("Customer");
+
         builder.Property(r => r.ExpiresAt)
             .HasColumnName("expires_at")
             .IsRequired();
